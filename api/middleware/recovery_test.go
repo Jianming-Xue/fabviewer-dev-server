@@ -19,7 +19,7 @@ func TestRecoveryPanickingHandler(t *testing.T) {
 	r.Use(middleware.Recovery(log))
 	r.GET("/boom", func(_ *gin.Context) { panic("something exploded") })
 
-	w := doRequest(r, http.MethodGet, "/boom")
+	w := doGet(r, "/boom")
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 
 	var body struct {
@@ -51,7 +51,7 @@ func TestRecoveryAfterPartialWrite(t *testing.T) {
 		panic("late panic")
 	})
 
-	w := doRequest(r, http.MethodGet, "/partial")
+	w := doGet(r, "/partial")
 	assert.Equal(t, "partial response", w.Body.String(), "已写部分响应不得被二次写")
 	assert.Len(t, log.snapshot(), 1, "panic 仍应记录日志")
 }
@@ -62,7 +62,7 @@ func TestRecoveryNormalPassThrough(t *testing.T) {
 	r.Use(middleware.Recovery(log))
 	r.GET("/ok", func(c *gin.Context) { c.String(http.StatusOK, "fine") })
 
-	w := doRequest(r, http.MethodGet, "/ok")
+	w := doGet(r, "/ok")
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "fine", w.Body.String())
 	assert.Empty(t, log.snapshot(), "无 panic 不产生日志")
@@ -77,7 +77,7 @@ func TestRecoveryNilLoggerUsesDefault(t *testing.T) {
 	r.Use(middleware.Recovery(nil)) // nil → logx.Default()
 	r.GET("/boom", func(_ *gin.Context) { panic("x") })
 
-	w := doRequest(r, http.MethodGet, "/boom")
+	w := doGet(r, "/boom")
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Len(t, capture.snapshot(), 1, "nil logger 应回退到 logx.Default()")
 }

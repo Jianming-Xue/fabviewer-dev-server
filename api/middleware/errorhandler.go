@@ -50,13 +50,7 @@ func WithMessageFunc(fn func(*errs.Error) string) HandlerOption {
 // 必须最先注册（最外层），c.Next() 返回后才能看到全部错误；
 // 响应已写过时跳过（防双写）。log 为 nil 时使用 logx.Default()。
 func ErrorHandler(log logx.Logger, opts ...HandlerOption) gin.HandlerFunc {
-	cfg := handlerConfig{statusMap: make(map[errs.Code]int, len(api.DefaultStatusMap))}
-	for code, status := range api.DefaultStatusMap {
-		cfg.statusMap[code] = status
-	}
-	for _, opt := range opts {
-		opt(&cfg)
-	}
+	cfg := newHandlerConfig(opts)
 	if log == nil {
 		log = logx.Default()
 	}
@@ -66,43 +60,64 @@ func ErrorHandler(log logx.Logger, opts ...HandlerOption) gin.HandlerFunc {
 		if len(c.Errors) == 0 || c.Writer.Written() {
 			return
 		}
-		err := c.Errors.Last().Err
+		writeError(c, c.Errors.Last().Err, cfg, log)
+	}
+}
 
-		var e *errs.Error
-		if errors.As(err, &e) {
-			status, ok := cfg.statusMap[e.Code]
-			if !ok {
-				status = http.StatusInternalServerError
-			}
-			message := e.Message
-			if cfg.messageFn != nil {
-				if rewritten := cfg.messageFn(e); rewritten != "" {
-					message = rewritten
-				}
-			}
-			b := api.NewBody(c, e.Code, message)
-			b.Details = e.Details
-			api.Write(c, status, &b)
-			return
-		}
+// newHandlerConfig 以默认码表为底、逐项应用 Option。
+func newHandlerConfig(opts []HandlerOption) handlerConfig {
+	cfg := handlerConfig{statusMap: make(map[errs.Code]int, len(api.DefaultStatusMap))}
+	for code, status := range api.DefaultStatusMap {
+		cfg.statusMap[code] = status
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return cfg
+}
 
-		switch {
-		case errors.Is(err, gorm.ErrRecordNotFound), errors.Is(err, sql.ErrNoRows):
-			b := api.NewBody(c, errs.CodeNotFound, "resource not found")
-			api.Write(c, http.StatusNotFound, &b)
-		case errors.Is(err, context.Canceled):
-			log.Info("client canceled request",
-				"path", c.Request.URL.Path, "request_id", api.RequestIDOf(c))
-			b := api.NewBody(c, errs.CodeInternal, "client canceled request")
-			api.Write(c, api.StatusClientClosedRequest, &b)
-		default:
-			log.Error("unhandled error",
-				"err", err.Error(),
-				"method", c.Request.Method,
-				"path", c.Request.URL.Path,
-				"request_id", api.RequestIDOf(c))
-			b := api.NewBody(c, errs.CodeInternal, "internal error")
-			api.Write(c, http.StatusInternalServerError, &b)
+// writeError 将错误翻译为统一响应体写回：优先按 *errs.Error 的码表映射，
+// 其余按哨兵错误（not found / canceled）或兜底 500 处理，根因只进日志。
+func writeError(c *gin.Context, err error, cfg handlerConfig, log logx.Logger) {
+	var e *errs.Error
+	if errors.As(err, &e) {
+		writeErrsError(c, e, cfg)
+		return
+	}
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound), errors.Is(err, sql.ErrNoRows):
+		b := api.NewBody(c, errs.CodeNotFound, "resource not found")
+		api.Write(c, http.StatusNotFound, &b)
+	case errors.Is(err, context.Canceled):
+		log.Info("client canceled request",
+			"path", c.Request.URL.Path, "request_id", api.RequestIDOf(c))
+		b := api.NewBody(c, errs.CodeInternal, "client canceled request")
+		api.Write(c, api.StatusClientClosedRequest, &b)
+	default:
+		log.Error("unhandled error",
+			"err", err.Error(),
+			"method", c.Request.Method,
+			"path", c.Request.URL.Path,
+			"request_id", api.RequestIDOf(c))
+		b := api.NewBody(c, errs.CodeInternal, "internal error")
+		api.Write(c, http.StatusInternalServerError, &b)
+	}
+}
+
+// writeErrsError 处理 *errs.Error：状态码取码表（未映射按 500），
+// message 可被 messageFn 改写，Details 原样透出。
+func writeErrsError(c *gin.Context, e *errs.Error, cfg handlerConfig) {
+	status, ok := cfg.statusMap[e.Code]
+	if !ok {
+		status = http.StatusInternalServerError
+	}
+	message := e.Message
+	if cfg.messageFn != nil {
+		if rewritten := cfg.messageFn(e); rewritten != "" {
+			message = rewritten
 		}
 	}
+	b := api.NewBody(c, e.Code, message)
+	b.Details = e.Details
+	api.Write(c, status, &b)
 }

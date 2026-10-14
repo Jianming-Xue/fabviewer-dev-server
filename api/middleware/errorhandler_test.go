@@ -54,7 +54,7 @@ func TestErrorHandlerCodeMap(t *testing.T) {
 			r.Use(middleware.ErrorHandler(log))
 			r.GET("/e", func(c *gin.Context) { _ = c.Error(tt.err) })
 
-			w := doRequest(r, http.MethodGet, "/e")
+			w := doGet(r, "/e")
 			require.Equal(t, tt.wantStatus, w.Code)
 
 			var b errBody
@@ -72,7 +72,7 @@ func TestErrorHandlerDetailsAndMessage(t *testing.T) {
 		_ = c.Error(errs.New(errs.CodeValidation, "参数非法").WithDetail("field", "email"))
 	})
 
-	w := doRequest(r, http.MethodGet, "/e")
+	w := doGet(r, "/e")
 	require.Equal(t, http.StatusBadRequest, w.Code)
 
 	var b errBody
@@ -87,7 +87,7 @@ func TestErrorHandlerContextCanceled(t *testing.T) {
 	r.Use(middleware.ErrorHandler(log))
 	r.GET("/e", func(c *gin.Context) { _ = c.Error(context.Canceled) })
 
-	w := doRequest(r, http.MethodGet, "/e")
+	w := doGet(r, "/e")
 	require.Equal(t, 499, w.Code)
 
 	records := log.snapshot()
@@ -102,7 +102,7 @@ func TestErrorHandlerUnknownError(t *testing.T) {
 	r.Use(middleware.ErrorHandler(log))
 	r.GET("/e", func(c *gin.Context) { _ = c.Error(errors.New("password is hunter2")) })
 
-	w := doRequest(r, http.MethodGet, "/e")
+	w := doGet(r, "/e")
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.NotContains(t, w.Body.String(), "hunter2", "根因不进响应")
 
@@ -122,7 +122,7 @@ func TestErrorHandlerWithStatusMap(t *testing.T) {
 	})))
 	r.GET("/e", func(c *gin.Context) { _ = c.Error(errs.New(errs.Code("USER_DISABLED"), "禁用")) })
 
-	w := doRequest(r, http.MethodGet, "/e")
+	w := doGet(r, "/e")
 	assert.Equal(t, http.StatusForbidden, w.Code, "自定义码经 WithStatusMap 映射")
 }
 
@@ -138,7 +138,7 @@ func TestErrorHandlerWithMessageFunc(t *testing.T) {
 	})
 
 	var b errBody
-	require.NoError(t, json.Unmarshal(doRequest(r, http.MethodGet, "/e").Body.Bytes(), &b))
+	require.NoError(t, json.Unmarshal(doGet(r, "/e").Body.Bytes(), &b))
 	assert.Equal(t, "i18n: not found", b.Message)
 
 	// messageFn 返回空串时保留原 message
@@ -147,7 +147,7 @@ func TestErrorHandlerWithMessageFunc(t *testing.T) {
 		return ""
 	})))
 	r2.GET("/e", func(c *gin.Context) { _ = c.Error(errs.New(errs.CodeNotFound, "kept message")) })
-	require.NoError(t, json.Unmarshal(doRequest(r2, http.MethodGet, "/e").Body.Bytes(), &b))
+	require.NoError(t, json.Unmarshal(doGet(r2, "/e").Body.Bytes(), &b))
 	assert.Equal(t, "kept message", b.Message)
 }
 
@@ -161,7 +161,7 @@ func TestErrorHandlerMultipleErrorsUsesLast(t *testing.T) {
 	})
 
 	var b errBody
-	require.NoError(t, json.Unmarshal(doRequest(r, http.MethodGet, "/e").Body.Bytes(), &b))
+	require.NoError(t, json.Unmarshal(doGet(r, "/e").Body.Bytes(), &b))
 	assert.Equal(t, "NOT_FOUND", b.Code, "多个错误取最后一个")
 }
 
@@ -174,7 +174,7 @@ func TestErrorHandlerSkipsWhenWritten(t *testing.T) {
 		_ = c.Error(errs.New(errs.CodeNotFound, "ignored"))
 	})
 
-	w := doRequest(r, http.MethodGet, "/e")
+	w := doGet(r, "/e")
 	assert.JSONEq(t, `{"written":true}`, w.Body.String(), "已写过响应不覆盖")
 }
 
@@ -184,7 +184,7 @@ func TestErrorHandlerNoErrors(t *testing.T) {
 	r.Use(middleware.ErrorHandler(log))
 	r.GET("/ok", func(c *gin.Context) { c.String(http.StatusOK, "fine") })
 
-	w := doRequest(r, http.MethodGet, "/ok")
+	w := doGet(r, "/ok")
 	assert.Equal(t, "fine", w.Body.String())
 	assert.Empty(t, log.snapshot())
 }
@@ -198,6 +198,6 @@ func TestErrorHandlerNilLoggerUsesDefault(t *testing.T) {
 	r.Use(middleware.ErrorHandler(nil))
 	r.GET("/e", func(c *gin.Context) { _ = c.Error(errors.New("boom")) })
 
-	doRequest(r, http.MethodGet, "/e")
+	doGet(r, "/e")
 	assert.Len(t, capture.snapshot(), 1, "nil logger 应回退到 logx.Default()")
 }

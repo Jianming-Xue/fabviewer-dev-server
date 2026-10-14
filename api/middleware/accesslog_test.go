@@ -18,7 +18,7 @@ func TestAccessLogRecords(t *testing.T) {
 	r.Use(middleware.AccessLog(log))
 	r.GET("/data", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
-	w := doRequest(r, http.MethodGet, "/data")
+	w := doGet(r, "/data")
 	require.Equal(t, http.StatusOK, w.Code)
 
 	records := log.snapshot()
@@ -48,10 +48,10 @@ func TestAccessLogSkipsHealthz(t *testing.T) {
 	r.GET("/readyz", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/api/data", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
-	doRequest(r, http.MethodGet, "/healthz")
-	doRequest(r, http.MethodGet, "/livez")
-	doRequest(r, http.MethodGet, "/readyz")
-	doRequest(r, http.MethodGet, "/api/data")
+	doGet(r, "/healthz")
+	doGet(r, "/livez")
+	doGet(r, "/readyz")
+	doGet(r, "/api/data")
 
 	records := log.snapshot()
 	require.Len(t, records, 1, "默认跳过 healthz/livez/readyz")
@@ -66,9 +66,9 @@ func TestAccessLogWithSkipPaths(t *testing.T) {
 	r.GET("/internal/metrics", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/users", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
-	doRequest(r, http.MethodGet, "/ping")
-	doRequest(r, http.MethodGet, "/internal/metrics")
-	doRequest(r, http.MethodGet, "/users")
+	doGet(r, "/ping")
+	doGet(r, "/internal/metrics")
+	doGet(r, "/users")
 
 	records := log.snapshot()
 	require.Len(t, records, 1)
@@ -84,7 +84,7 @@ func TestAccessLogNilLoggerUsesDefault(t *testing.T) {
 	r.Use(middleware.AccessLog(nil)) // nil → logx.Default()
 	r.GET("/x", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
-	doRequest(r, http.MethodGet, "/x")
+	doGet(r, "/x")
 	assert.Len(t, capture.snapshot(), 1, "nil logger 应回退到 logx.Default()")
 }
 

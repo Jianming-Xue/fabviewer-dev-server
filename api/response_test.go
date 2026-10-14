@@ -37,7 +37,7 @@ func newTestEngine() *gin.Engine {
 func doRequest(t *testing.T, r http.Handler, method, target string) *httptest.ResponseRecorder {
 	t.Helper()
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(method, target, http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), method, target, http.NoBody)
 	r.ServeHTTP(w, req)
 	return w
 }

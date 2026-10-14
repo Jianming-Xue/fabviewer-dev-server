@@ -32,7 +32,7 @@ func TestFullStack(t *testing.T) {
 	r.GET("/panic", func(_ *gin.Context) { panic("stack boom") })
 
 	t.Run("成功路径", func(t *testing.T) {
-		w := doRequest(r, http.MethodGet, "/ok")
+		w := doGet(r, "/ok")
 		require.Equal(t, http.StatusOK, w.Code)
 		assert.NotEmpty(t, w.Header().Get(api.HeaderRequestID))
 
@@ -47,12 +47,12 @@ func TestFullStack(t *testing.T) {
 	})
 
 	t.Run("错误路径", func(t *testing.T) {
-		w := doRequest(r, http.MethodGet, "/fail")
+		w := doGet(r, "/fail")
 		require.Equal(t, http.StatusNotFound, w.Code)
 	})
 
 	t.Run("panic 路径", func(t *testing.T) {
-		w := doRequest(r, http.MethodGet, "/panic")
+		w := doGet(r, "/panic")
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		assert.NotEmpty(t, w.Header().Get(api.HeaderRequestID),
 			"panic 响应仍应带请求 ID 头")

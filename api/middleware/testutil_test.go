@@ -1,6 +1,7 @@
 package middleware_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -60,9 +61,9 @@ func newTestEngine() *gin.Engine {
 	return gin.New()
 }
 
-func doRequest(r http.Handler, method, target string) *httptest.ResponseRecorder {
+func doGet(r http.Handler, target string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(method, target, http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, target, http.NoBody)
 	r.ServeHTTP(w, req)
 	return w
 }
@@ -71,7 +72,7 @@ func doRequestWithHeader(
 	r http.Handler, method, target, header, value string,
 ) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(method, target, http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), method, target, http.NoBody)
 	req.Header.Set(header, value)
 	r.ServeHTTP(w, req)
 	return w

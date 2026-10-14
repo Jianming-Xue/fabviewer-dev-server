@@ -23,7 +23,7 @@ func TestRequestIDGenerate(t *testing.T) {
 		c.String(http.StatusOK, api.RequestIDOf(c))
 	})
 
-	w := doRequest(r, http.MethodGet, "/echo")
+	w := doGet(r, "/echo")
 
 	rid := w.Header().Get(api.HeaderRequestID)
 	require.NotEmpty(t, rid, "响应头必须回写 X-Request-Id")
@@ -52,7 +52,7 @@ func TestRequestIDUniqueness(t *testing.T) {
 	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	for range 100 {
-		rid := doRequest(r, http.MethodGet, "/x").Header().Get(api.HeaderRequestID)
+		rid := doGet(r, "/x").Header().Get(api.HeaderRequestID)
 		seen[rid] = struct{}{}
 	}
 	assert.Len(t, seen, 100, "100 次请求 ID 不得重复")
