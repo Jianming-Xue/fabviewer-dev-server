@@ -18,5 +18,5 @@
 //
 // 中间件注册顺序固定（见 middleware 包文档）：
 //
-//	ErrorHandler → Recovery → AccessLog → RequestID → 路由
+//	AccessLog → ErrorHandler → Recovery → RequestID → 路由
 package api

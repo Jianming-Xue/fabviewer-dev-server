@@ -5,11 +5,16 @@
 //
 //	r := gin.New()
 //	r.Use(
-//		middleware.ErrorHandler(log), // 最外层：c.Next() 返回后统一消费 c.Errors
-//		middleware.Recovery(log),     // 第二位：兜住后续中间件与路由的 panic
-//		middleware.AccessLog(log),    // 访问日志（记录最终状态码与耗时）
-//		middleware.RequestID(),       // X-Request-Id 生成/透传/回写
+//		middleware.AccessLog(log),    // 最外层：在 ErrorHandler 写回错误响应之后
+//		                              // 才记录，status/latency 才是最终值
+//		middleware.ErrorHandler(log), // c.Next() 返回后统一消费 c.Errors
+//		middleware.Recovery(log),     // 兜住后续中间件与路由的 panic
+//		middleware.RequestID(),       // X-Request-Id 生成/透传/回写（预写响应头，
+//		                              // 任何位置的写回都能带上）
 //	)
 //
 // handler 中约定：发生错误时 c.Error(err) 后直接 return，不要自行写错误响应。
+//
+// 注意：AccessLog 必须在 ErrorHandler 外层，否则错误路径的状态码（404/500）
+// 会按 gin 默认值 200 记录。
 package middleware
