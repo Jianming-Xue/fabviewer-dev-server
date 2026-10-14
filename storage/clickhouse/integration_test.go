@@ -54,7 +54,7 @@ func TestIntegrationBatchAndQuerySlice(t *testing.T) {
 
 	const table = "common_lib_ch_it"
 	require.NoError(t, client.Exec(ctx, `CREATE TABLE IF NOT EXISTS `+table+` (
-		id UInt64,
+		id Int64,
 		name String,
 		ts DateTime
 	) ENGINE = MergeTree ORDER BY id`))

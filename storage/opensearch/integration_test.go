@@ -65,7 +65,9 @@ func TestOpenSearchLifecycle(t *testing.T) {
 		res, err := opensearch.Search[order](ctx, cli, index,
 			map[string]any{"term": map[string]any{"_id": id}},
 			opensearch.WithPaging(paging.Query{Page: 1, Size: 10}),
-			opensearch.WithSorts("-created_at", "+id"),
+			// 注：+id 不参与排序——源字段 id 是字符串，被 OpenSearch 动态映射为
+			// text 类型（不可排序，需 keyword 映射）；created_at 动态映射为 date 可排序。
+			opensearch.WithSorts("-created_at"),
 		)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, res.Total)
