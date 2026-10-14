@@ -110,28 +110,32 @@ linters:
     depguard:
       rules:
         ifaces-no-storage:                # 接口访问层禁存储
-          files: ["**/interfaces/**/*.go"]
+          files: ["**/interfaces/**"]
           deny:
             - pkg: "github.com/fab-viewer/common-lib/storage"
               desc: "接口访问层禁止依赖存储包"
         svc-no-infra:                     # 服务/聚合层禁 api+storage
-          files: ["**/service/**/*.go", "**/domain/**/*.go"]
+          files: ["**/service/**", "**/domain/**"]
           deny:
             - pkg: "github.com/fab-viewer/common-lib/storage"
               desc: "服务层禁止依赖存储包"
             - pkg: "github.com/fab-viewer/common-lib/api"
               desc: "服务层禁止依赖 API 包"
         storage-no-api:                   # 存储层禁 api
-          files: ["**/storage/**/*.go"]
+          files: ["**/storage/**"]
           deny:
             - pkg: "github.com/fab-viewer/common-lib/api"
               desc: "存储层禁止依赖 API 包"
         model-slim:                       # 对象层只用跨层包
-          files: ["**/model/**/*.go"]
+          files: ["**/model/**"]
           deny:
             - pkg: "github.com/fab-viewer/common-lib/storage"
             - pkg: "github.com/fab-viewer/common-lib/api"
 ```
+
+注意两点（depguard v2.2 的实际语义，已实测）：
+- `deny` 的 pkg 是**前缀匹配**而非 glob——deny `.../common-lib/storage` 即拦截其全部子包；"禁止一切三方依赖"要用 `listMode: strict` + `allow: ["$gostd"]` 白名单表达，写 `github.com/**` 不会命中
+- `files` glob 用 `**/目录/**` 形式；结尾再接 `/*.go` 会要求文件位于子目录、顶层文件匹配不到
 
 不用 golangci-lint 的团队可用 Makefile 脚本替代：
 

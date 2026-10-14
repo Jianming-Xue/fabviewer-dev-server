@@ -50,26 +50,19 @@ linters:
         - G104
     depguard:
       rules:
-        # 跨层零依赖包：禁止 import 任何非标准库
+        # 跨层零依赖包：只允许标准库与 testify（测试用）。
+        # 注意：depguard 的 deny/allow 是前缀匹配而非 glob，deny "github.com/**"
+        # 永远不会命中——"禁一切三方"必须用 strict 模式的 allow 白名单表达。
         cross-layer-zero-deps:
+          listMode: strict
           files:
             - "**/errs/**"
             - "**/paging/**"
             - "**/logx/**"
-          deny:
-            - pkg: "github.com/**"
-              desc: "跨层包必须零三方依赖"
-            - pkg: "gorm.io/**"
-              desc: "跨层包必须零三方依赖"
-            - pkg: "golang.org/x/**"
-              desc: "跨层包必须零三方依赖"
-            - pkg: "gopkg.in/**"
-              desc: "跨层包必须零三方依赖"
-            - pkg: "google.golang.org/**"
-              desc: "跨层包必须零三方依赖"
-            - pkg: "github.com/fab-viewer/common-lib/**"
-              desc: "跨层包不得 import 本库其他包（防止依赖环）"
-        # api 包禁止依赖存储
+          allow:
+            - "$gostd"
+            - "github.com/stretchr/testify"
+        # api 包禁止依赖存储（deny 为前缀匹配，可命中全部子包）
         api-no-storage:
           files:
             - "**/api/**"
