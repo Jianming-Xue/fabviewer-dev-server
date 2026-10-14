@@ -1,0 +1,53 @@
+# common-lib 集成测试依赖环境（make integration 前先拉起）：
+#
+#	docker compose -f docker-compose.test.yml up -d
+#	export COMMON_LIB_ORACLE_DSN='commonlib/commonlib@localhost:1521/freepdb1'
+#	export COMMON_LIB_CH_DSN='clickhouse://commonlib:commonlib@localhost:9000/commonlib'
+#	export COMMON_LIB_OS_ADDRS='http://localhost:9200'
+#	make integration
+#
+# 说明：Oracle 容器初始化约需 1-2 分钟（healthcheck 通过后再跑测试）；
+# 不跑集成测试时无需此文件，普通 go test 全部自动 skip。
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim
+    environment:
+      ORACLE_PASSWORD: commonlib
+      APP_USER: commonlib
+      APP_USER_PASSWORD: commonlib
+    ports:
+      - "1521:1521"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    environment:
+      CLICKHOUSE_USER: commonlib
+      CLICKHOUSE_PASSWORD: commonlib
+      CLICKHOUSE_DB: commonlib
+    ports:
+      - "9000:9000"
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  opensearch:
+    image: opensearchproject/opensearch:2.19.0
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30

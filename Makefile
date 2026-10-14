@@ -5,10 +5,13 @@ GOLANGCI_LINT := $(if $(shell command -v golangci-lint 2>/dev/null),golangci-lin
 LIB_PKGS := ./errs/... ./paging/... ./logx/... ./api/... ./storage/...
 COVERAGE_THRESHOLD := 99
 
-.PHONY: build vet lint test cover mock integration tidy
+.PHONY: build vet fmt lint test cover mock integration tidy
 
 build:
 	go build ./...
+
+fmt:
+	$(GOLANGCI_LINT) fmt
 
 vet:
 	go vet ./...
