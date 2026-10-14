@@ -1,0 +1,10 @@
+# 构建产物与测试输出
+coverage.out
+*.out
+bin/
+
+# 环境与编辑器
+.env
+.DS_Store
+.idea/
+.vscode/

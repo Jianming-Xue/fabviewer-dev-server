@@ -1,0 +1,127 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  # 默认组：errcheck / govet / staticcheck / unused / ineffassign
+  default: standard
+  enable:
+    - revive
+    - misspell
+    - unconvert
+    - unparam
+    - prealloc
+    - gocritic
+    - gosec
+    - bodyclose
+    - noctx
+    - sqlclosecheck
+    - copyloopvar
+    - depguard
+    - nolintlint
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/fab-viewer/common-lib
+    revive:
+      severity: warning
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: var-naming
+        - name: receiver-naming
+        - name: unexported-return
+        - name: cognitive-complexity
+          arguments: [15]
+        - name: argument-limit
+          arguments: [5]
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+    gosec:
+      excludes:
+        - G104
+    depguard:
+      rules:
+        # 跨层零依赖包：禁止 import 任何非标准库
+        cross-layer-zero-deps:
+          files:
+            - "**/errs/**"
+            - "**/paging/**"
+            - "**/logx/**"
+          deny:
+            - pkg: "github.com/**"
+              desc: "跨层包必须零三方依赖"
+            - pkg: "gorm.io/**"
+              desc: "跨层包必须零三方依赖"
+            - pkg: "golang.org/x/**"
+              desc: "跨层包必须零三方依赖"
+            - pkg: "gopkg.in/**"
+              desc: "跨层包必须零三方依赖"
+            - pkg: "google.golang.org/**"
+              desc: "跨层包必须零三方依赖"
+            - pkg: "github.com/fab-viewer/common-lib/**"
+              desc: "跨层包不得 import 本库其他包（防止依赖环）"
+        # api 包禁止依赖存储
+        api-no-storage:
+          files:
+            - "**/api/**"
+          deny:
+            - pkg: "github.com/fab-viewer/common-lib/storage"
+              desc: "接口访问层组件禁止依赖存储包（层间隔离）"
+        # 存储子包禁止依赖 api，且互不依赖
+        storage-no-api:
+          files:
+            - "**/storage/**"
+          deny:
+            - pkg: "github.com/fab-viewer/common-lib/api"
+              desc: "存储层禁止依赖 API 包（层间隔离）"
+        oracle-isolated:
+          files:
+            - "**/storage/oracle/**"
+          deny:
+            - pkg: "github.com/fab-viewer/common-lib/storage/clickhouse"
+              desc: "存储子包互相隔离"
+            - pkg: "github.com/fab-viewer/common-lib/storage/opensearch"
+              desc: "存储子包互相隔离"
+        clickhouse-isolated:
+          files:
+            - "**/storage/clickhouse/**"
+          deny:
+            - pkg: "github.com/fab-viewer/common-lib/storage/oracle"
+              desc: "存储子包互相隔离"
+            - pkg: "github.com/fab-viewer/common-lib/storage/opensearch"
+              desc: "存储子包互相隔离"
+        opensearch-isolated:
+          files:
+            - "**/storage/opensearch/**"
+          deny:
+            - pkg: "github.com/fab-viewer/common-lib/storage/oracle"
+              desc: "存储子包互相隔离"
+            - pkg: "github.com/fab-viewer/common-lib/storage/clickhouse"
+              desc: "存储子包互相隔离"
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+      - path: examples/
+        linters:
+          - unparam
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/fab-viewer/common-lib
