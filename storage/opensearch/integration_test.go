@@ -57,7 +57,7 @@ func TestOpenSearchLifecycle(t *testing.T) {
 	t.Run("Index", func(t *testing.T) {
 		require.NoError(t, cli.Index(ctx, index, id, doc))
 		// 刷新使写入对 _search 可见（Get 为实时读，无需刷新）。
-		_, err := cli.SDK().Indices.Refresh(ctx, &opensearchapi.IndicesRefreshReq{Indices: []string{index}})
+		_, err := cli.SDK().Indices.Refresh(ctx, &opensearchapi.IndicesRefreshReq{Index: []string{index}})
 		require.NoError(t, err)
 	})
 

@@ -6,6 +6,51 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-14
+
+### Added
+
+- 基准测试基线：clickhouse 包装层 QuerySlice（~30ns/行）与 Batch.Append 开销
+- 层间隔离实证：五层结构模拟业务工程 + depguard 违规注入验证（README 模板同步修正）
+- 全库总覆盖率门槛 99% 实测达标（99.1%）
+
+### Changed
+
+- opensearch-go v4.5.0 → v4.8.1（IndicesRefreshReq 字段 Indices→Index 已适配）
+
+### Fixed
+
+- depguard 规则语义错误：deny 是前缀匹配而非 glob，原"跨层零依赖"规则从未生效；
+  改为 `listMode: strict` + `$gostd` 白名单并以违规探针实测验证
+
+## [0.4.0] - 2026-10-14
+
+### Added
+
+- `storage/opensearch`：OpenSearch v4 SDK 封装（Index/Get[T]/Delete/Search[T]，
+  WithPaging/WithSorts，错误翻译，SDK 隔离 + SDK() 逃生舱，覆盖率 100%）
+- `examples/ossearch`
+
+## [0.3.0] - 2026-10-14
+
+### Added
+
+- `storage/clickhouse`：ClickHouse 轻量封装（Open fail-fast、Exec/Query/Ping、
+  Batch[T] 阈值自动发送、QuerySlice[T] 反射填充，覆盖率 98.1%）
+- `storage.PoolConfig`（连接池四参数 + WithDefaults）
+- `examples/chbatch`
+
+## [0.2.0] - 2026-10-14
+
+### Added
+
+- `storage/oracle`：GORM（GORM 出口）/ 原生 SQL（SQL 出口）/ 存储过程与函数
+  （CallProc/CallFunc + 事务变体 CallProcTx/CallFuncTx + FromGorm）三通道；
+  Out/OutCursor 标记、Cursor 游标、gormlog 分级日志、driverAdapter 驱动缝
+  （默认 godror，预留 go-ora）、goose 迁移驱动的集成测试（覆盖率 98.4%）
+- `examples/oracleproc`
+- 里程碑：定时器业务可完整接入（存储 + 跨层包，不依赖 Gin）
+
 ## [0.1.0] - 2026-10-14
 
 ### Added
