@@ -6,6 +6,26 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-15
+
+### Fixed
+
+- Oracle 真实库（gvenzl/oracle-free 26ai）集成验收全链路通过，修复四处只有
+  真环境才能暴露的问题：
+  - `BuildDSN` 的 alterSession 值需双层引号（godror 二次 logfmt 解码会把含空格
+    的 NLS 值拆散，ORA-02248），附 godror.ParseDSN 回环测试
+  - goose 版本表存在性探测返回 '1'/'0' 字符串（godror.Number 进不了 bool）
+  - 弃用 goose 的 Querier 适配层、自实现 7 方法 Store（适配层硬绑 Go bool，
+    godror 按 DPI BOOLEAN 绑定写入 VARCHAR2 必败，且 Oracle DDL 隐式提交
+    会残留空表触发 missing zero version migration）
+  - GORM 命名策略 upperNamer：整体大写对齐 Oracle 无引号标识符惯例，
+    业务模型无需逐字段写 column tag（默认小写引号生成 "id" 报 ORA-00904）
+
+### Verified
+
+- Oracle 验收线：Open → Ping → goose 迁移 → GORM CRUD → CallProc 标量 OUT →
+  游标 OUT → GORM 事务内 CallProcTx → Close（golang 容器 + 镜像内客户端库运行）
+
 ## [0.5.0] - 2026-10-14
 
 ### Added
