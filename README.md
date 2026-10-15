@@ -35,6 +35,93 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
   存储层消费 `q.Limit()/q.Offset()` 或 `opensearch.WithPaging(q)`；`api` 与 `storage`
   互不感知，只在 `paging`/`errs` 相会。
 
+## 对象层约定（DTO/VO/PO）——所有业务系统强制遵循
+
+任何业务系统的**开发与新增功能**都遵循同一套对象流转方案，目标：**隐藏存储实现细节**，
+让上层永远不感知 PO/表结构/存储介质的存在。
+
+```
+HTTP 请求                                          定时任务（无 DTO）
+   │                                                    │
+   ▼                                                    ▼
+api 层          DTO 进出（json tag）              service / application 层
+   │                                                    │
+   ▼                                                    ▼
+service / application 层  DTO → VO（组装/裁剪业务对象）
+   │
+   ▼
+storage 层      对外签名只见 VO：
+   写：VO → PO（包内转换）→ GORM / 原生协议
+   读：PO / 行集 → VO 返回
+```
+
+三类对象的定义位置与规则：
+
+| 对象 | 定义位置 | tag | 规则 |
+|---|---|---|---|
+| **DTO** | 对象层共享包 | 仅 json | 对外 HTTP 契约，只在 api 层进出；定时任务没有 DTO |
+| **VO** | 对象层共享包 | 仅 json | 业务对象，storage 对上的唯一边界类型；**禁止携带任何存储 tag**（唯一权衡例外见下文 ClickHouse） |
+| **PO** | **存储包内部、类型名未导出** | gorm / ch | 编译器保证 PO 出现在导出签名即编译失败——隐藏存储细节由语言强制，不靠约定 |
+
+写路径示例（PO 未导出，锁死在存储包内；配合库内置 upperNamer，PO 连 column tag 都可省）：
+
+```go
+// internal/storage/user_repo.go —— 包 internal/storage
+type userPO struct { // 小写：编译器禁止它出现在任何导出签名
+    ID   int64
+    Name string
+}
+
+func (r *UserRepo) Create(ctx context.Context, vo model.User) error {
+    po := userPO{ID: vo.ID, Name: vo.Name} // VO→PO 转换只发生在这里
+    return r.db.GORM().WithContext(ctx).Create(&po).Error
+}
+```
+
+读路径与原生 SQL 直出 VO 的标准姿势：
+
+```go
+// ORM 查询：PO→VO 后返回
+var po userPO
+db.GORM().WithContext(ctx).Where("ID = ?", id).First(&po)
+return model.User{ID: po.ID, Name: po.Name}, nil
+
+// Oracle 原生 SQL 直出 VO：GORM Scan 按列名映射，不需要 gorm tag
+var vo model.User
+db.GORM().WithContext(ctx).Raw("SELECT id, name FROM users WHERE id = :1", id).Scan(&vo)
+
+// OpenSearch 直出 VO：_source 走 encoding/json，VO 已有的 json tag 直接复用
+res, err := opensearch.Search[model.User](ctx, cli, "users", q)
+
+// ClickHouse：QuerySlice 按 ch tag 反射填充
+```
+
+**ClickHouse 的 ch tag 权衡（唯一需要各业务系统自己拍板的点）**：`QuerySlice[T]` 按
+`ch:"..."` tag 映射。tag 写在 VO 上最省代码但会把 VO 与 CH 耦合；**推荐**在存储包内
+定义带 ch tag 的私有行结构，扫出后三行代码转 VO，保持 VO 纯净。
+
+**禁止事项**（评审必查）：
+
+1. PO（或任何 gorm/ch tag 结构）出现在导出签名、返回值、对象层共享包
+2. VO 携带 gorm tag；DTO 出现在 storage 层
+3. `*gorm.DB`、`driver.Rows`、`*opensearch.Client` 等 SDK 类型越出存储层
+
+## 定时器业务（无接口访问层）的适配清单
+
+内部定时任务没有 api 层，按以下清单裁剪（其余约定与 REST 业务完全一致）：
+
+| 项 | 调整 |
+|---|---|
+| 分层结构 | 去掉接口访问层与 DTO；保留 service / application / storage / 对象层；main 兼任调度入口（组装根豁免仍适用） |
+| 对象流转 | 简化为 **VO ↔ PO**（DTO→VO 一步消失，任务参数直接是业务参数） |
+| 错误处理 | 没有 ErrorHandler 中间件兜底——任务循环内自行处理：`log.Error` 记录（errs 包装自带操作上下文），并按 `errs.Code` 决定重试/跳过/告警（如 CodeDB 重试、CodeValidation 告警并跳过） |
+| 日志 | 启动时 `logx.SetDefault(log)`；每个任务用 `log.With("job", "xxx_settle")` 派生，日志自动带任务标识 |
+| 分页 | 批处理通常不翻页；ClickHouse `Batch[T]` 是定时任务主力写入器 |
+| 事务 | 结算/对账类任务用 `GORM().Transaction` + `oracle.CallProcTx`（FromGorm 取事务连接），已有完整约定 |
+| 优雅退出 | 信号 → 停止调度（不取新任务）→ 等待在跑任务完成（带超时）→ 依次 Close 各存储客户端——顺序错误会丢未发送的 Batch 数据 |
+| depguard | 删除业务模板中 ifaces 相关规则（目录不存在自然不生效），其余规则不变 |
+| 调度器 | 不在 common-lib 范围（本库不绑 cron 选型）；若未来多个定时系统需要任务锁/错过补偿等公共能力，再评估入库 |
+
 ## 快速开始
 
 业务系统 `go.mod`（正式托管前的本地引用方式）：
@@ -72,6 +159,8 @@ r.GET("/api/users", func(c *gin.Context) {
 ```
 
 ### 定时器业务（无接口访问层，只 import 存储包 + 跨层包）
+
+完整适配清单见上文「定时器业务（无接口访问层）的适配清单」。
 
 ```go
 db, err := oracle.Open(ctx, oracle.Config{

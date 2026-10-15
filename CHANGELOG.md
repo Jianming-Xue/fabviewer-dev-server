@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- README 新增强制性规范：对象层约定（DTO/VO/PO 三类对象的定义位置、tag 规则、
+  PO 未导出由编译器强制隐藏存储细节、原生 SQL 直出 VO 的标准姿势、ClickHouse
+  ch tag 权衡）与定时器业务适配清单（九项：分层裁剪、VO↔PO 直转、错误处理、
+  日志、事务、优雅退出、depguard 调整等）
+
 ## [0.5.1] - 2026-10-15
 
 ### Fixed
