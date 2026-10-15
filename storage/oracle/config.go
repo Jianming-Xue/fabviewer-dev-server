@@ -113,7 +113,10 @@ func (c Config) BuildDSN() string { //nolint:gocritic // 配置值对象按值�
 	b.WriteString(strconv.Quote(c.connectString()))
 	for _, k := range sortedKeys(c.SessionParams) {
 		b.WriteString(" alterSession=")
-		b.WriteString(strconv.Quote(k + "=" + c.SessionParams[k]))
+		// 值会被 godror 二次 logfmt 解码（dsn.go: 对 alterSession 逐条再 parse）：
+		// 含空格的值（如 NLS 日期格式）必须在第二层再引一层，否则被拆成两条残缺的
+		// ALTER SESSION（ORA-02248，真实库集成测试抓出）。
+		b.WriteString(strconv.Quote(k + "=" + strconv.Quote(c.SessionParams[k])))
 	}
 	return b.String()
 }

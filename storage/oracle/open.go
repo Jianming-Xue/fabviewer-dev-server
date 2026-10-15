@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 
 	"github.com/fab-viewer/common-lib/errs"
 	"github.com/fab-viewer/common-lib/logx"
@@ -71,7 +72,11 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*DB, error) { //noli
 	gormDB, err := gorm.Open(o.drv.GormDialector(cfg.BuildDSN()), &gorm.Config{
 		PrepareStmt:          cfg.prepareStmtEnabled(),
 		DisableAutomaticPing: true,
-		Logger:               newGormLogger(o.log, cfg.LogLevel, time.Duration(cfg.SlowSQLMs)*time.Millisecond),
+		// Oracle 无引号标识符一律大写存储；GORM 默认 snake_case 小写加引号
+		// 生成 "id" 与建表 ID 不匹配（ORA-00904，真实库集成测试抓出），
+		// 整体大写 Namer 对齐标准 Oracle DDL，业务模型无需逐字段写 tag。
+		NamingStrategy: upperNamer{inner: schema.NamingStrategy{}},
+		Logger:         newGormLogger(o.log, cfg.LogLevel, time.Duration(cfg.SlowSQLMs)*time.Millisecond),
 	})
 	if err != nil {
 		return nil, errs.Wrapf(err, errs.CodeDB, "oracle.Open user=%s connectString=%s", cfg.User, cfg.connectString())

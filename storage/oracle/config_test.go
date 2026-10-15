@@ -4,7 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/godror/godror"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/errs"
 	"github.com/fab-viewer/common-lib/storage"
@@ -151,13 +153,13 @@ func TestConfigBuildDSN(t *testing.T) {
 			want: `user="a\"b" password="p@ss x" connectString="db:1522/S"`,
 		},
 		{
-			name: "会话参数按键排序",
+			name: "会话参数按键排序（值双层引号，兼容 godror 二次 logfmt 解码）",
 			in: Config{
 				User: "u", Password: "p", Host: "h", Port: 1521, ServiceName: "s",
 				SessionParams: map[string]string{"TIME_ZONE": "UTC", "NLS_DATE_FORMAT": "YYYY-MM-DD"},
 			},
 			want: `user="u" password="p" connectString="h:1521/s" ` +
-				`alterSession="NLS_DATE_FORMAT=YYYY-MM-DD" alterSession="TIME_ZONE=UTC"`,
+				`alterSession="NLS_DATE_FORMAT=\"YYYY-MM-DD\"" alterSession="TIME_ZONE=\"UTC\""`,
 		},
 		{
 			name: "空会话参数无 alterSession 段",
@@ -170,6 +172,31 @@ func TestConfigBuildDSN(t *testing.T) {
 			assert.Equal(t, tt.want, tt.in.BuildDSN())
 		})
 	}
+}
+
+// TestBuildDSNGodrorRoundTrip 用 godror 官方 ParseDSN 验证 BuildDSN 可被完整还原，
+// 尤其是含空格的 NLS 值不得被二次 logfmt 解码拆散（ORA-02248，真实库抓出）。
+func TestBuildDSNGodrorRoundTrip(t *testing.T) {
+	cfg := Config{
+		User: "app", Password: `p@ss "x"`, Host: "db", Port: 1521, ServiceName: "ORCL",
+		SessionParams: map[string]string{
+			"NLS_DATE_FORMAT": "YYYY-MM-DD HH24:MI:SS",
+			"TIME_ZONE":       "UTC",
+		},
+	}
+
+	params, err := godror.ParseDSN(cfg.BuildDSN())
+	require.NoError(t, err)
+	assert.Equal(t, "app", params.Username)
+	assert.Equal(t, `p@ss "x"`, params.Password.Secret())
+	assert.Equal(t, "db:1521/ORCL", params.ConnectString)
+
+	got := make(map[string]string, len(params.AlterSession))
+	for _, kv := range params.AlterSession {
+		got[kv[0]] = kv[1]
+	}
+	assert.Equal(t, cfg.SessionParams, got,
+		"含空格的会话参数值必须原样还原为单条键值对")
 }
 
 func TestLogLevelToGorm(t *testing.T) {
