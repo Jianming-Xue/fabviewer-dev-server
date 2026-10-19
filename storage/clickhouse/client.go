@@ -7,7 +7,8 @@ import (
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
-	"github.com/fab-viewer/common-lib/errs"
+	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/storage/clickhouse/config"
 )
 
 // queryPreviewMax 是错误上下文中查询文本的最大长度（rune 数），超长截断，
@@ -24,8 +25,8 @@ type Client struct {
 // Open 按配置建立 ClickHouse 连接，并 Ping 验证连通性（fail-fast：配置或网络
 // 问题在启动期即暴露，而非首次查询时）。配置非法返回 errs.CodeValidation，
 // 连接失败返回 errs.CodeDB。
-func Open(ctx context.Context, cfg Config) (*Client, error) { //nolint:gocritic //hugeParam：按值传配置是计划 API 的人体工学约定，建连路径一次性开销可忽略
-	opts, err := cfg.toOptions()
+func Open(ctx context.Context, cfg config.Config) (*Client, error) { //nolint:gocritic //hugeParam：按值传配置是计划 API 的人体工学约定，建连路径一次性开销可忽略
+	opts, err := toOptions(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -62,13 +63,17 @@ func (c *Client) Query(ctx context.Context, query string, args ...any) (driver.R
 
 // Ping 验证当前连接可用性。
 func (c *Client) Ping(ctx context.Context) error {
-	return wrapDB(c.conn.Ping(ctx), "clickhouse.Ping")
+	return WrapDB(c.conn.Ping(ctx), "clickhouse.Ping")
 }
 
 // Close 关闭客户端并释放底层连接池，幂等。
 func (c *Client) Close() error {
-	return wrapDB(c.conn.Close(), "clickhouse.Close")
+	return WrapDB(c.conn.Close(), "clickhouse.Close")
 }
+
+// NewFromConn 用既有原生连接构造 Client（高级用法/测试替身：连接池由外部
+// 组件管理时复用连接；常规建连走 Open）。
+func NewFromConn(conn driver.Conn) *Client { return &Client{conn: conn} }
 
 // Conn 返回底层 SDK 连接（逃生舱）：需要本包未覆盖的 SDK 能力
 // （ServerVersion/AsyncInsert/QueryFormat 等）时使用。
@@ -83,11 +88,53 @@ func queryPreview(q string) string {
 	return preview
 }
 
-// wrapDB 在 err 非 nil 时包装为带操作上下文的 errs.CodeDB 错误，nil 原样
+// WrapDB 在 err 非 nil 时包装为带操作上下文的 errs.CodeDB 错误，nil 原样
 // 透传（返回真正的 nil error，避免直接透传 *Error 造成 typed-nil）。
-func wrapDB(err error, format string, args ...any) error {
+// 与 Conn() 逃生舱配套：业务直连 SDK 时用它包装错误，与库内行为一致。
+func WrapDB(err error, format string, args ...any) error {
 	if err == nil {
 		return nil
 	}
 	return errs.Wrapf(err, errs.CodeDB, format, args...)
+}
+
+// compressionMethods 是压缩算法名（小写）到 SDK CompressionMethod 的映射。
+var compressionMethods = map[string]ch.CompressionMethod{
+	"none":    ch.CompressionNone,
+	"lz4":     ch.CompressionLZ4,
+	"lz4hc":   ch.CompressionLZ4HC,
+	"zstd":    ch.CompressionZSTD,
+	"gzip":    ch.CompressionGZIP,
+	"deflate": ch.CompressionDeflate,
+	"br":      ch.CompressionBrotli,
+}
+
+// toOptions 把 Config 应用默认值后映射为 clickhouse-go/v2 的 Options。
+// 压缩名非法时返回 errs.CodeValidation 错误，其余字段不产生错误。
+func toOptions(c config.Config) (ch.Options, error) { //nolint:gocritic //hugeParam：值语义只读映射，与 Open 的按值 Config 一致
+	method := ch.CompressionLZ4
+	if c.Compression != "" {
+		m, ok := compressionMethods[strings.ToLower(c.Compression)]
+		if !ok {
+			return ch.Options{}, errs.Newf(errs.CodeValidation,
+				"clickhouse.Config compression=%q 非法（可选 none/lz4/lz4hc/zstd/gzip/deflate/br）",
+				c.Compression)
+		}
+		method = m
+	}
+	dialTimeout := c.DialTimeout
+	if dialTimeout <= 0 {
+		dialTimeout = config.DefaultDialTimeout
+	}
+	pool := c.Pool.WithDefaults()
+	return ch.Options{
+		Addr:            c.Addrs,
+		Auth:            ch.Auth{Database: c.DB, Username: c.User, Password: c.Password},
+		TLS:             c.TLS,
+		Compression:     &ch.Compression{Method: method},
+		DialTimeout:     dialTimeout,
+		MaxOpenConns:    pool.MaxOpenConns,
+		MaxIdleConns:    pool.MaxIdleConns,
+		ConnMaxLifetime: pool.ConnMaxLifetime,
+	}, nil
 }

@@ -16,6 +16,8 @@ import (
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 
 	"github.com/fab-viewer/common-lib/storage/clickhouse"
+	"github.com/fab-viewer/common-lib/storage/clickhouse/batch"
+	chcfg "github.com/fab-viewer/common-lib/storage/clickhouse/config"
 )
 
 // sample 是示例行结构：ch tag 与表列一一对应。
@@ -52,7 +54,7 @@ func run(dsn string) error {
 		return fmt.Errorf("解析 DSN 失败: %w", err)
 	}
 	ctx := context.Background()
-	client, err := clickhouse.Open(ctx, clickhouse.Config{
+	client, err := clickhouse.Open(ctx, chcfg.Config{
 		Addrs:    opts.Addr,
 		DB:       opts.Auth.Database,
 		User:     opts.Auth.Username,
@@ -88,7 +90,7 @@ func prepare(ctx context.Context, client *clickhouse.Client) error {
 
 // write 批量写入 total 行，演示阈值自动发送与 Close 兜底发送。
 func write(ctx context.Context, client *clickhouse.Client) error {
-	b, err := clickhouse.NewBatch[sample](ctx, client, table, threshold)
+	b, err := batch.NewBatch[sample](ctx, client, table, threshold)
 	if err != nil {
 		return err
 	}

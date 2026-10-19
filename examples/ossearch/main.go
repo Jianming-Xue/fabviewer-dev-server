@@ -18,9 +18,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fab-viewer/common-lib/errs"
-	"github.com/fab-viewer/common-lib/paging"
+	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/paging"
 	"github.com/fab-viewer/common-lib/storage/opensearch"
+	oscfg "github.com/fab-viewer/common-lib/storage/opensearch/config"
+	"github.com/fab-viewer/common-lib/storage/opensearch/search"
 )
 
 // order 是示例业务文档（对象层 DTO 的替身）。
@@ -46,7 +48,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	cli, err := opensearch.Open(opensearch.Config{
+	cli, err := opensearch.Open(oscfg.Config{
 		Addrs:    strings.Split(rawAddrs, ","),
 		Username: os.Getenv("COMMON_LIB_OS_USER"),
 		Password: os.Getenv("COMMON_LIB_OS_PASS"),
@@ -72,10 +74,10 @@ func main() {
 	fmt.Printf("Index ok: index=%s id=%s\n", index, id)
 
 	// 2. Search：按 _id 精确过滤，带分页与排序
-	res, err := opensearch.Search[order](ctx, cli, index,
+	res, err := search.Search[order](ctx, cli, index,
 		map[string]any{"term": map[string]any{"_id": id}},
-		opensearch.WithPaging(paging.Query{Page: 1, Size: 10}),
-		opensearch.WithSorts("-created_at", "+id"),
+		search.WithPaging(paging.Query{PageIndex: 1, PageSize: 10}),
+		search.WithSorts("-created_at", "+id"),
 	)
 	if err != nil {
 		fail("Search 失败", err)

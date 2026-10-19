@@ -11,7 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/fab-viewer/common-lib/errs"
+	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/storage/clickhouse/config"
 )
 
 // fakeConn 是 driver.Conn 的测试替身：嵌入接口满足全部方法签名，仅覆盖
@@ -64,14 +65,14 @@ type fakeBatch struct{ driver.Batch }
 
 func TestOpen(t *testing.T) {
 	t.Run("配置非法返回 CodeValidation 且不拨号", func(t *testing.T) {
-		_, err := Open(context.Background(), Config{Compression: "bogus"})
+		_, err := Open(context.Background(), config.Config{Compression: "bogus"})
 		var e *errs.Error
 		require.ErrorAs(t, err, &e)
 		assert.Equal(t, errs.CodeValidation, e.Code)
 	})
 
 	t.Run("连接失败返回 CodeDB 带地址上下文", func(t *testing.T) {
-		cfg := Config{Addrs: []string{"127.0.0.1:1"}, DialTimeout: 200 * time.Millisecond}
+		cfg := config.Config{Addrs: []string{"127.0.0.1:1"}, DialTimeout: 200 * time.Millisecond}
 		_, err := Open(context.Background(), cfg)
 		var e *errs.Error
 		require.ErrorAs(t, err, &e)

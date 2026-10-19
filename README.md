@@ -6,6 +6,9 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 - **RESTful API 业务**（Gin）
 - **内部定时器业务**（无接口访问层）
 
+配套文档：[STATUS](STATUS.md)（当前状态与待办快照）、[HANDOVER](HANDOVER.md)
+（交接说明：设计理念、包地图、契约速查、未完成事项）。
+
 ## 版本与环境要求
 
 | 项 | 要求 |
@@ -21,9 +24,9 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 
 | common-lib 包 | 接口访问层 | 服务层 | 业务聚合层 | 存储层 | 对象层 | main 组装根 |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `errs` / `paging` / `logx`（跨层，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `common/errs` / `common/paging` / `common/logx` / `common/actor`（跨层，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `api`、`api/middleware` | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
-| `storage/oracle` / `storage/clickhouse` / `storage/opensearch` | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
+| `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/clickhouse`（`config`/`batch` 子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
 
 约定：
 
@@ -32,7 +35,7 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 - **SDK 类型不越层**：`*gorm.DB`、`*opensearch.Client` 等只允许出现在业务存储层内部，
   存储层对上的接口签名用业务自定义类型 + `errs`/`paging` 类型。
 - **跨层共享靠依赖倒置**：接口层 `api.PageQuery(c)` 产出 `paging.Query` 沿层传递，
-  存储层消费 `q.Limit()/q.Offset()` 或 `opensearch.WithPaging(q)`；`api` 与 `storage`
+  存储层消费 `q.Limit()/q.Offset()` 或 `search.WithPaging(q)`；`api` 与 `storage`
   互不感知，只在 `paging`/`errs` 相会。
 
 ## 对象层约定（DTO/VO/PO）——所有业务系统强制遵循
@@ -117,7 +120,7 @@ res, err := opensearch.Search[model.User](ctx, cli, "users", q)
 | 错误处理 | 没有 ErrorHandler 中间件兜底——任务循环内自行处理：`log.Error` 记录（errs 包装自带操作上下文），并按 `errs.Code` 决定重试/跳过/告警（如 CodeDB 重试、CodeValidation 告警并跳过） |
 | 日志 | 启动时 `logx.SetDefault(log)`；每个任务用 `log.With("job", "xxx_settle")` 派生，日志自动带任务标识 |
 | 分页 | 批处理通常不翻页；ClickHouse `Batch[T]` 是定时任务主力写入器 |
-| 事务 | 结算/对账类任务用 `GORM().Transaction` + `oracle.CallProcTx`（FromGorm 取事务连接），已有完整约定 |
+| 事务 | 结算/对账类任务用 `GORM().Transaction` + `conn.CallProcTx`（conn.FromGorm 取事务连接），已有完整约定 |
 | 优雅退出 | 信号 → 停止调度（不取新任务）→ 等待在跑任务完成（带超时）→ 依次 Close 各存储客户端——顺序错误会丢未发送的 Batch 数据 |
 | depguard | 删除业务模板中 ifaces 相关规则（目录不存在自然不生效），其余规则不变 |
 | 调度器 | 不在 common-lib 范围（本库不绑 cron 选型）；若未来多个定时系统需要任务锁/错过补偿等公共能力，再评估入库 |
@@ -138,17 +141,17 @@ replace github.com/fab-viewer/common-lib => ../../services/common-lib
 
 ```go
 r := gin.New()
-// 注册顺序固定：AccessLog → ErrorHandler → Recovery → RequestID
+// 注册顺序固定：AccessLog → ErrorHandler → Recovery → RuntimeContext
 //（AccessLog 必须在 ErrorHandler 外层，否则错误路径记录的 status 不正确）
 r.Use(
     middleware.AccessLog(log),
     middleware.ErrorHandler(log),
     middleware.Recovery(log),
-    middleware.RequestID(),
+    middleware.RuntimeContext(),
 )
 
 r.GET("/api/users", func(c *gin.Context) {
-    q := api.PageQuery(c) // 解析 ?page=&size=，非法值回退默认
+    q := api.PageQuery(c) // 解析 ?pageIndex=&pageSize=，非法值回退默认
     res, err := userRepo.List(c.Request.Context(), q) // 返回 paging.Result[User]
     if err != nil {
         _ = c.Error(err) // 交给 ErrorHandler 统一写回，不要自行写错误响应
@@ -163,13 +166,13 @@ r.GET("/api/users", func(c *gin.Context) {
 完整适配清单见上文「定时器业务（无接口访问层）的适配清单」。
 
 ```go
-db, err := oracle.Open(ctx, oracle.Config{
+db, err := conn.Open(ctx, config.Config{
     User: "app", Password: "***", Host: "db.example.com", ServiceName: "ORCLPDB1",
 })
 if err != nil { ... }
 
 var n int64
-err = db.CallProc(ctx, "P_ACCRUE", jobID, oracle.Out(&n))
+err = db.CallProc(ctx, "P_ACCRUE", jobID, conn.Out(&n))
 // 原生 SQL：rows, err := db.SQL().QueryContext(ctx, "SELECT ...")
 // ORM：    db.GORM().WithContext(ctx).Find(&orders)   // 记得带 WithContext
 ```
@@ -236,23 +239,50 @@ check-layers:
 	       END {exit f}'
 ```
 
-## 统一响应体契约
+## 统一响应体契约（apiresponse）
 
-成功/失败同构（`api.Body`）：
+成功/失败同构（`api.Response`，五字段恒序列化）：**code 即 HTTP 状态码（数字）**，
+**txId 取自请求头 `txId`**（未携带时由 `middleware.RuntimeContext` 生成兜底，透传优先）。
 
 ```json
-{"code":"OK","message":"success","data":{"total":57,"page":2,"size":5,"items":[...]},
- "requestId":"0c8f...","timestamp":"2026-10-14T17:53:31.98+08:00"}
+{"code":200,"success":true,"errMsg":"",
+ "contents":{"pageSize":5,"pageIndex":2,"totalSize":57,"data":[...]},
+ "txId":"0c8f..."}
 ```
 
 ```json
-{"code":"VALIDATION_ERROR","message":"参数 email 格式不正确","details":{"field":"email"},
- "requestId":"0c8f...","timestamp":"2026-10-14T17:53:31.98+08:00"}
+{"code":400,"success":false,"errMsg":"参数 email 格式不正确","contents":null,"txId":"0c8f..."}
 ```
 
-默认错误码 → HTTP 状态码（`api.DefaultStatusMap`，可经 `middleware.WithStatusMap` 增补）：
+- 分页请求参数为 `pageIndex`/`pageSize`（`api.PageQuery` 解析，非法回退默认值）；
+  分页出参 **pageable**（`paging.Pageable`：pageSize/pageIndex/totalSize/data）置于 `contents`。
+- 字符串业务错误码（`errs.Code`）与明细（`Details`）不出参：错误码只用于内部映射
+  与日志，明细随 `business error` 日志留痕（`ErrorHandler`）。
 
-| code | HTTP |
+### 请求运行时上下文（common/tx）
+
+`middleware.RuntimeContext` 解析请求头四个字段，包装为**整个请求期间**可用的
+上下文（`tx.Tx`），三路注入：
+
+| 请求头 | tx.Tx 字段 | 兜底规则 |
+|---|---|---|
+| `txId` | `ID` | 缺失生成 32 位 hex，透传优先 |
+| `txTime` | `Time` | 格式 yyyyMMDDHHmmss；缺失/解析失败用服务器时间 |
+| `txName` | `Name` | 无（可空） |
+| `userName` | `User` | 无（可空；同时注入 actor 审计上下文） |
+
+- **业务层读取**：`tx.FromContext(c.Request.Context())` —— 沿 service/storage
+  全链路可读（跨层会合点，与 actor/paging 同模式）
+- **审计打通**：`userName` 注入 actor 上下文，`oracle/repository` 仓储写库时
+  `BasePO` 的 `CreatedBy`/`UpdatedBy` 自动填充，业务代码零感知
+- **访问日志**：自动携带 `tx_id`/`tx_name`/`user`
+- 定时任务无请求头，任务入口自注入：
+  `ctx = tx.NewContext(ctx, tx.Tx{ID: snowflake.Next(), Name: "daily-settle"})`
+
+业务错误码 → HTTP 状态码映射（`api.DefaultStatusMap`，可经 `middleware.WithStatusMap` 增补；
+映射结果同时决定 HTTP 状态与响应 code）：
+
+| errs.Code | HTTP（即响应 code） |
 |---|---|
 | OK | 200 |
 | VALIDATION_ERROR | 400 |
@@ -276,15 +306,15 @@ doc.go 各有完整用法示例）。要点：
 
 | 包 | 部署前提 | 关键 API |
 |---|---|---|
-| `storage/oracle` | CGO + Oracle Instant Client；GORM/原生 SQL/存储过程三通道 | `Open` / `GORM()` / `SQL()` / `CallProc` / `CallProcTx` |
-| `storage/clickhouse` | 无（原生 TCP 协议，默认 9000 端口） | `Open` / `NewBatch[T]` / `QuerySlice[T]` / `Conn()` |
-| `storage/opensearch` | 无（HTTP，默认 9200；自签集群可开 Insecure） | `Open` / `Search[T]` / `Index` / `Get[T]` / `Delete` / `SDK()` |
+| `storage/oracle`（conn/config/base/repository 四子包） | CGO + Oracle Instant Client；GORM/原生 SQL/存储过程三通道 | `conn.Open` / `db.GORM()` / `db.SQL()` / `db.CallProc` / `conn.CallProcTx` |
+| `storage/clickhouse`（config/batch 子包） | 无（原生 TCP 协议，默认 9000 端口） | `Open` / `batch.NewBatch[T]` / `QuerySlice[T]` / `client.Conn()` |
+| `storage/opensearch`（config/search 子包） | 无（HTTP，默认 9200；自签集群可开 Insecure） | `Open` / `search.Search[T]` / `client.Index` / `client.Get[T]` / `client.Delete` / `client.SDK()` |
 
 ### 事务使用约定（Oracle）
 
 - 常规事务：`db.GORM().WithContext(ctx).Transaction(func(tx *gorm.DB) error { ... })`
-- 存储过程参与同一事务：在 Transaction 回调内用 `oracle.FromGorm(tx)` 取 Execer，
-  再 `CallProcTx(ctx, execer, "P_X", ...)`——过程与 GORM DML 共享同一 `*sql.Tx`。
+- 存储过程参与同一事务：在 Transaction 回调内用 `conn.FromGorm(tx)` 取 Execer，
+  再 `conn.CallProcTx(ctx, execer, "P_X", ...)`——过程与 GORM DML 共享同一 `*sql.Tx`。
 - 嵌套事务用 GORM 的 SavePoint；不要在回调外保存 tx 使用。
 - 提醒：`GORM()` 出口返回裸 `*gorm.DB`，链式操作记得 `.WithContext(ctx)`。
 
@@ -293,7 +323,7 @@ doc.go 各有完整用法示例）。要点：
 - 库本身不做迁移；业务系统统一用 [goose](https://github.com/pressly/goose) 管理版本化
   DDL，迁移文件随业务仓库走。
 - 存储过程/函数的 DDL 必须用 `-- +goose StatementBegin/End` 包裹（PL/SQL 块含分号）。
-- 本库集成测试自带 goose 迁移目录（`storage/oracle/testdata/migrations/oracle/`），
+- 本库集成测试自带 goose 迁移目录（`storage/oracle/conn/testdata/migrations/oracle/`），
   可作为业务系统的样板。
 
 ## 集成测试（本库开发用）
@@ -328,7 +358,7 @@ make integration
 make fmt       # gofmt + goimports（提交前跑）
 ```
 
-覆盖率分级：跨层包（errs/paging/logx）与 api ≥99%；存储包装层 ≥95%（握手类路径由
+覆盖率分级：跨层包（common/errs、common/paging、common/logx）与 api ≥99%；存储包装层 ≥95%（握手类路径由
 集成测试兜底）。
 
 ## 示例

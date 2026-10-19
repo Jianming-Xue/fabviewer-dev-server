@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/fab-viewer/common-lib/logx"
+	"github.com/fab-viewer/common-lib/common/logx"
 )
 
 // capturedRecord 记录一次日志调用。
@@ -68,12 +68,13 @@ func doGet(r http.Handler, target string) *httptest.ResponseRecorder {
 	return w
 }
 
-func doRequestWithHeader(
-	r http.Handler, method, target, header, value string,
-) *httptest.ResponseRecorder {
+// doGetWithHeaders 发起携带多个请求头的 GET 请求。
+func doGetWithHeaders(r http.Handler, target string, headers map[string]string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(context.Background(), method, target, http.NoBody)
-	req.Header.Set(header, value)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, target, http.NoBody)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 	r.ServeHTTP(w, req)
 	return w
 }

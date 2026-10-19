@@ -9,26 +9,27 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/fab-viewer/common-lib/errs"
+	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/storage/opensearch/config"
 )
 
 // TestOpen 验证 Open 的装配与失败路径。
 func TestOpen(t *testing.T) {
 	t.Run("成功", func(t *testing.T) {
-		cli, err := Open(Config{Addrs: []string{"http://127.0.0.1:19200"}})
+		cli, err := Open(config.Config{Addrs: []string{"http://127.0.0.1:19200"}})
 		require.NoError(t, err)
 		require.NotNil(t, cli)
 		assert.NotNil(t, cli.SDK(), "SDK 逃生舱应返回底层客户端")
 	})
 
 	t.Run("空 Addrs 拒绝", func(t *testing.T) {
-		_, err := Open(Config{})
+		_, err := Open(config.Config{})
 		require.Error(t, err)
 		require.ErrorIs(t, err, errs.ErrValidation)
 	})
 
 	t.Run("非法地址", func(t *testing.T) {
-		_, err := Open(Config{Addrs: []string{"://bad-address"}})
+		_, err := Open(config.Config{Addrs: []string{"://bad-address"}})
 		require.Error(t, err)
 		e, ok := errs.From(err)
 		require.True(t, ok)
@@ -51,7 +52,7 @@ func TestIndex(t *testing.T) {
 		cli := newFakeClient(t, ft)
 		require.NoError(t, cli.Index(context.Background(), "orders", "o-1", orderDoc{ID: "o-1", Title: "t"}))
 
-		req := ft.request(t, 0)
+		req := ft.firstRequest(t)
 		assert.Equal(t, http.MethodPut, req.Method)
 		assert.Equal(t, "/orders/_doc/o-1", req.Path)
 		assert.JSONEq(t, `{"id":"o-1","title":"t","n":0}`, req.Body)
@@ -64,7 +65,7 @@ func TestIndex(t *testing.T) {
 		cli := newFakeClient(t, ft)
 		require.NoError(t, cli.Index(context.Background(), "orders", "", orderDoc{ID: "x"}))
 
-		req := ft.request(t, 0)
+		req := ft.firstRequest(t)
 		assert.Equal(t, http.MethodPost, req.Method)
 		assert.Equal(t, "/orders/_doc", req.Path)
 		ft.assertAllClosed(t)
@@ -135,7 +136,7 @@ func TestGet(t *testing.T) {
 		require.True(t, found)
 		assert.Equal(t, orderDoc{ID: "o-1", Title: "t", N: 7}, dest)
 
-		req := ft.request(t, 0)
+		req := ft.firstRequest(t)
 		assert.Equal(t, http.MethodGet, req.Method)
 		assert.Equal(t, "/orders/_doc/o-1", req.Path)
 		ft.assertAllClosed(t)
@@ -217,7 +218,7 @@ func TestDelete(t *testing.T) {
 		cli := newFakeClient(t, ft)
 		require.NoError(t, cli.Delete(ctx, "orders", "o-1"))
 
-		req := ft.request(t, 0)
+		req := ft.firstRequest(t)
 		assert.Equal(t, http.MethodDelete, req.Method)
 		assert.Equal(t, "/orders/_doc/o-1", req.Path)
 		ft.assertAllClosed(t)

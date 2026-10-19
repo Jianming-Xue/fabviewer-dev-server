@@ -3,6 +3,7 @@ package opensearch
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,7 +12,8 @@ import (
 	"github.com/opensearch-project/opensearch-go/v4"
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
 
-	"github.com/fab-viewer/common-lib/errs"
+	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/storage/opensearch/config"
 )
 
 // statusCodes 是 HTTP 状态码到 errs.Code 的精确映射；
@@ -35,9 +37,9 @@ type Client struct {
 // Addrs 为空（errs.CodeValidation）或地址非法（errs.CodeDB）时返回错误。
 func Open(
 	//nolint:gocritic // Config 为计划契约的配置值对象，按值传入防止调用方持有后修改
-	cfg Config,
+	cfg config.Config,
 ) (*Client, error) {
-	sdkCfg, err := cfg.sdkConfig()
+	sdkCfg, err := sdkConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +48,24 @@ func Open(
 		return nil, errs.Wrapf(err, errs.CodeDB, "opensearch.Open addrs=%v", cfg.Addrs)
 	}
 	return &Client{api: api}, nil
+}
+
+// NewFromAPI 用既有 SDK 客户端构造 Client（高级用法/测试替身：SDK 客户端由
+// 外部装配时复用；常规建连走 Open）。
+func NewFromAPI(api *opensearchapi.Client) *Client { return &Client{api: api} }
+
+// DoSearch 执行一条原生搜索请求并把传输/HTTP 层错误统一翻译为 errs 错误码
+// （供 search 子包与业务直连 DSL 场景复用；响应解析由调用方完成）。
+func (c *Client) DoSearch(ctx context.Context, req *opensearchapi.SearchReq) (*opensearchapi.SearchResp, error) {
+	resp, err := c.api.Search(ctx, req)
+	if err != nil {
+		kv := "indices=" + strings.Join(req.Indices, ",")
+		if len(req.Indices) == 1 {
+			kv = "index=" + req.Indices[0]
+		}
+		return nil, translateError(err, "opensearch.Search", kv)
+	}
+	return resp, nil
 }
 
 // SDK 返回底层 opensearch-go/v4 客户端作为逃生舱：本包未覆盖的能力
@@ -190,4 +210,31 @@ func esErrorDetail(err error) string {
 		return stringErr.Err
 	}
 	return ""
+}
+
+// sdkConfig 将 config.Config 映射为 opensearch-go/v4 的 SDK 配置：
+// Pool.MaxIdleConns → MaxIdleConnsPerHost、Pool.ConnMaxIdleTime → IdleConnTimeout
+// （均先经 WithDefaults 补默认）。Pool.MaxOpenConns/ConnMaxLifetime 是长连接
+// 数据库的池语义，HTTP 连接池按需建连、由 Keep-Alive 复用，无精确对应，不映射。
+func sdkConfig(c config.Config) (opensearch.Config, error) { //nolint:gocritic //hugeParam：值语义只读映射，与 Open 的按值 Config 一致
+	if len(c.Addrs) == 0 {
+		return opensearch.Config{}, errs.Newf(errs.CodeValidation,
+			"opensearch.Config Addrs 不能为空")
+	}
+	pool := c.Pool.WithDefaults()
+	transport := &http.Transport{
+		Proxy:               http.ProxyFromEnvironment,
+		MaxIdleConnsPerHost: pool.MaxIdleConns,
+		IdleConnTimeout:     pool.ConnMaxIdleTime,
+	}
+	if c.Insecure {
+		//nolint:gosec // Insecure 由调用方显式 opt-in，仅限内网自签证书集群跳过校验。
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+	return opensearch.Config{
+		Addresses: c.Addrs,
+		Username:  c.Username,
+		Password:  c.Password,
+		Transport: transport,
+	}, nil
 }

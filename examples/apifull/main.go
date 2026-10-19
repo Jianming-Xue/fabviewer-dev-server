@@ -1,5 +1,5 @@
 // Command apifull 演示 common-lib API 组件的完整用法：四个中间件的推荐注册
-// 顺序、统一响应体、分页参数解析与优雅停机。
+// 顺序、请求运行时上下文、统一响应体、分页参数解析与优雅停机。
 //
 // 启动：
 //
@@ -7,8 +7,10 @@
 //
 // 试一下：
 //
-//	curl -i 'http://localhost:8080/api/users?page=2&size=5'
-//	curl -i -H 'X-Request-Id: my-rid-1' http://localhost:8080/api/users/1
+//	curl -i 'http://localhost:8080/api/users?pageIndex=2&pageSize=5'
+//	curl -i -H 'txId: my-tx-1' -H 'txTime: 20261019173000' \
+//	     -H 'txName: getUser' -H 'userName: zhangsan' \
+//	     http://localhost:8080/api/users/1
 //	curl -i http://localhost:8080/api/users/999   # 404 统一错误体
 //	curl -i http://localhost:8080/api/boom        # panic → 500 统一体
 //	curl -i http://localhost:8080/healthz
@@ -29,9 +31,9 @@ import (
 
 	"github.com/fab-viewer/common-lib/api"
 	"github.com/fab-viewer/common-lib/api/middleware"
-	"github.com/fab-viewer/common-lib/errs"
-	"github.com/fab-viewer/common-lib/logx"
-	"github.com/fab-viewer/common-lib/paging"
+	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/logx"
+	"github.com/fab-viewer/common-lib/common/paging"
 )
 
 // user 模拟业务对象层的 DTO。
@@ -46,15 +48,15 @@ type userRepo struct {
 	data []user
 }
 
-func (r *userRepo) list(_ context.Context, q paging.Query) (paging.Result[user], error) {
+func (r *userRepo) list(_ context.Context, q paging.Query) (paging.Pageable[user], error) {
 	start, end := q.Offset(), q.Offset()+q.Limit()
 	if start >= len(r.data) {
-		return paging.NewResult[user](q, int64(len(r.data)), nil), nil
+		return paging.NewPageable[user](q, int64(len(r.data)), nil), nil
 	}
 	if end > len(r.data) {
 		end = len(r.data)
 	}
-	return paging.NewResult[user](q, int64(len(r.data)), r.data[start:end]), nil
+	return paging.NewPageable[user](q, int64(len(r.data)), r.data[start:end]), nil
 }
 
 func (r *userRepo) get(_ context.Context, id int64) (user, error) {
@@ -73,13 +75,13 @@ func main() {
 	repo := &userRepo{data: seedUsers(57)}
 
 	r := gin.New()
-	// 注册顺序固定：AccessLog → ErrorHandler → Recovery → RequestID
+	// 注册顺序固定：AccessLog → ErrorHandler → Recovery → RuntimeContext
 	// AccessLog 最外层，保证错误路径记录的 status 是最终值
 	r.Use(
 		middleware.AccessLog(log),
 		middleware.ErrorHandler(log),
 		middleware.Recovery(log),
-		middleware.RequestID(),
+		middleware.RuntimeContext(),
 	)
 
 	r.GET("/healthz", func(c *gin.Context) { c.String(http.StatusOK, "ok") })

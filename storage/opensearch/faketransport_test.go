@@ -78,13 +78,13 @@ func (f *fakeTransport) requestCount() int {
 	return len(f.requests)
 }
 
-// request 返回第 i 个捕获请求。
-func (f *fakeTransport) request(t *testing.T, i int) capturedRequest {
+// firstRequest 返回首个捕获请求。
+func (f *fakeTransport) firstRequest(t *testing.T) capturedRequest {
 	t.Helper()
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	require.Greater(t, len(f.requests), i, "请求数不足")
-	return f.requests[i]
+	require.NotEmpty(t, f.requests, "请求数不足")
+	return f.requests[0]
 }
 
 // assertAllClosed 断言每个响应体都被关闭且仅关闭一次。

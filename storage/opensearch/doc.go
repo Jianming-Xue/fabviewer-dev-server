@@ -7,7 +7,7 @@
 //
 // 用法示例：
 //
-//	cli, err := opensearch.Open(opensearch.Config{
+//	cli, err := opensearch.Open(oscfg.Config{
 //	    Addrs:     []string{"https://os1:9200"},
 //	    Username:  "admin",
 //	    Password:  "admin",
@@ -15,10 +15,10 @@
 //	})
 //	...
 //	_ = cli.Index(ctx, "orders", "o-1", order)
-//	res, err := opensearch.Search[order](ctx, cli, "orders",
+//	res, err := search.Search[order](ctx, cli, "orders",
 //	    map[string]any{"term": map[string]any{"status": "paid"}},
-//	    opensearch.WithPaging(paging.Query{Page: 2, Size: 10}),
-//	    opensearch.WithSorts("-created_at", "+id"))
+//	    search.WithPaging(paging.Query{PageIndex: 2, PageSize: 10}),
+//	    search.WithSorts("-created_at", "+id"))
 //	found, err := opensearch.Get[order](ctx, cli, "orders", "o-1", &doc)
 //	_ = cli.Delete(ctx, "orders", "o-1")
 //

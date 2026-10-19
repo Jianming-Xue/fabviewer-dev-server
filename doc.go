@@ -5,8 +5,10 @@
 // 包按消费者组织，import 路径即能力边界，与业务系统的分层结构一一对应：
 //
 //	接口访问层  → api、api/middleware（仅此层可 import，Gin 依赖从这里开始）
-//	存储层      → storage/oracle、storage/clickhouse、storage/opensearch
-//	所有层      → errs、paging、logx（零三方依赖的跨层包）
+//	存储层      → storage/oracle、storage/clickhouse、storage/opensearch、
+//	              storage/snowflake（ID 生成）、storage 根（PoolConfig）
+//	所有层      → common/errs、common/paging、common/logx、common/actor
+//	              （零三方依赖的跨层包）
 //
 // 快速开始（业务系统 go.mod）：
 //
@@ -15,7 +17,7 @@
 // REST 接口层示例：
 //
 //	r.Use(middleware.ErrorHandler(log), middleware.Recovery(log),
-//	      middleware.AccessLog(log), middleware.RequestID())
+//	      middleware.AccessLog(log), middleware.RuntimeContext())
 //	q := api.PageQuery(c)
 //	api.OKPage(c, res)
 //

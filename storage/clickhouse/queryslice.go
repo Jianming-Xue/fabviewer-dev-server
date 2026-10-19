@@ -4,7 +4,7 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/fab-viewer/common-lib/errs"
+	"github.com/fab-viewer/common-lib/common/errs"
 )
 
 // querySliceInitialCap 是结果行数未知时的初始切片容量：ClickHouse 数据块

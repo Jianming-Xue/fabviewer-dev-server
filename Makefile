@@ -2,7 +2,7 @@ GOBIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(if $(shell command -v golangci-lint 2>/dev/null),golangci-lint,$(GOBIN)/golangci-lint)
 
 # 库包（examples 不计入覆盖率，只做编译烟雾测试）
-LIB_PKGS := ./errs/... ./paging/... ./logx/... ./api/... ./storage/...
+LIB_PKGS := ./common/... ./api/... ./storage/...
 COVERAGE_THRESHOLD := 99
 
 .PHONY: build vet fmt lint test cover mock integration tidy

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/api/middleware"
-	"github.com/fab-viewer/common-lib/logx"
+	"github.com/fab-viewer/common-lib/common/logx"
 )
 
 func TestRecoveryPanickingHandler(t *testing.T) {
@@ -23,12 +23,14 @@ func TestRecoveryPanickingHandler(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 
 	var body struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
+		Code    int    `json:"code"`
+		Success bool   `json:"success"`
+		ErrMsg  string `json:"errMsg"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.Equal(t, "INTERNAL_ERROR", body.Code)
-	assert.Equal(t, "internal error", body.Message, "不向调用方泄漏 panic 内容")
+	assert.Equal(t, http.StatusInternalServerError, body.Code)
+	assert.False(t, body.Success)
+	assert.Equal(t, "internal error", body.ErrMsg, "不向调用方泄漏 panic 内容")
 
 	records := log.snapshot()
 	require.Len(t, records, 1)

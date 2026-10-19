@@ -6,6 +6,63 @@
 
 ## [Unreleased]
 
+### Changed（Breaking：存储层分包）
+
+- `storage/oracle` 按功能拆四包：`config`（Config/WithDefaults/Validate/BuildDSN）、
+  `conn`（Open/DB/存储过程/Cursor/驱动适配）、`base`（BasePO 审计基类）、
+  `repository`（Repository[T] 通用仓储）；根包只留分包向导文档
+- `storage/clickhouse` 拆 `config` 与 `batch` 子包；`storage/opensearch` 拆
+  `config` 与 `search` 子包
+- 连接装配逻辑归位：clickhouse 的 Options 映射与 opensearch 的 SDK 配置装配
+  移回各自根包（config 子包保持纯数据+校验）；oracle Config 的
+  `validate`/`connectString` 导出为 `Validate`/`ConnectString`
+- 新增逃生舱：`clickhouse.NewFromConn`（含错误包装 `clickhouse.WrapDB`）、
+  `opensearch.NewFromAPI` 与 `opensearch.Client.DoSearch`
+- 业务方 import 迁移对照：`oracle.Open`→`conn.Open`、`oracle.Config`→`config.Config`、
+  `oracle.Out/OutCursor/CallProcTx/FromGorm/Cursor`→`conn.*`、`oracle.BasePO`→`base.BasePO`、
+  `oracle.NewRepository`→`repository.NewRepository`、`clickhouse.NewBatch`→`batch.NewBatch`、
+  `clickhouse.Config`→子包 `config.Config`、`opensearch.Search/WithPaging/WithSorts`→`search.*`
+
+### Added
+
+- 新增 [STATUS.md](STATUS.md)（仓库实时状态、git 快照、待定决策、已知问题、
+  质量门槛现状）与 [HANDOVER.md](HANDOVER.md)（交接文档：设计理念、包地图、
+  三大契约 wire 格式、开发验证流程、未完成事项与约定速记）
+- 请求运行时上下文 `common/tx`：请求头 txId/txTime（yyyyMMDDHHmmss，缺失或解析
+  失败兜底服务器时间）/txName/userName 由 `middleware.RuntimeContext` 组装为
+  `tx.Tx` 注入请求 context，业务层经 `tx.FromContext` 全链路读取；userName
+  同时注入 actor 审计上下文（oracle BasePO 的 CreatedBy/UpdatedBy 自动填充）；
+  访问日志新增 tx_name/user 字段
+
+### Changed（Breaking：API 层契约重设计）
+
+- 统一响应体重构为 apiresponse（`api.Response`）：`{code:int(HTTP 状态码), success:bool,
+  errMsg:string, contents:any, txId:string}`，五字段恒序列化。原先的字符串业务码
+  （`errs.Code`）、`message`/`data`/`details`/`requestId`/`timestamp` 字段移出响应体；
+  `errs.Code` 转为纯内部映射键，Details 随 `business error` 日志留痕
+- 事务 ID 通道变更：请求头 `X-Request-Id` → `txId`；`middleware.RequestID()`
+  → `RuntimeContext()`（经 TxID 演进而来）；`api.HeaderRequestID/CtxRequestID/RequestIDOf`
+  → `HeaderTxID/CtxTx/TxOf/TxIDOf`；访问日志字段 `request_id` → `tx_id`
+  （txId 缺失时生成兜底的行为待定，暂保持生成）
+- 分页契约变更：入参 `page`/`size` → `pageIndex`/`pageSize`；出参 `paging.Result`
+  → `paging.Pageable`（`pageSize/pageIndex/totalSize/data`），`NewResult` → `NewPageable`；
+  `paging.Query` 字段 `Page`/`Size` → `PageIndex`/`PageSize`（`Limit()/Offset()/Normalize()`
+  语义不变）
+- 导出符号改名：`api.Body` → `api.Response`、`api.NewBody` → `api.NewResponse`；
+  其余（`OK/Created/NoContent/OKPage/Fail/Write/PageQuery/StatusFor`、
+  `WithStatusMap/WithMessageFunc/WithSkipPaths`）保持不变
+
+### Changed（目录重组）
+
+- 目录重组（结构清晰化，公共 API 符号零变化，仅 import 路径变更）：
+  - 跨层基础包挪入 `common/`：`errs` → `common/errs`、`paging` → `common/paging`、
+    `logx` → `common/logx`、`actor` → `common/actor`
+  - 雪花 ID 归属存储：`snowflake` → `storage/snowflake`（Oracle Repository 内部
+    消费）；storage 根保留 `PoolConfig`
+  - 业务系统升级需批量替换 import 路径（符号与调用点零改动），如：
+    `sed -i '' -e 's|common-lib/errs|common-lib/common/errs|g' -e 's|common-lib/paging|common-lib/common/paging|g' -e 's|common-lib/logx|common-lib/common/logx|g' -e 's|common-lib/actor|common-lib/common/actor|g' -e 's|common-lib/snowflake|common-lib/storage/snowflake|g' $(git ls-files '*.go')`
+    （Linux 去掉 `-i` 后的空串参数）
+
 ### Added
 
 - README 新增强制性规范：对象层约定（DTO/VO/PO 三类对象的定义位置、tag 规则、

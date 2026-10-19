@@ -9,10 +9,28 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/fab-viewer/common-lib/common/errs"
 )
 
 // fakeRows 是手写的 driver.Rows 替身：由闭包驱动行为，模拟 SDK 的
 // Next/ScanStruct（ch tag 填充）/Err/Close 语义。
+// asDBError 断言 err 是 errs.CodeDB 并返回它（与 batch 子包各自持有一份）。
+func asDBError(t *testing.T, err error) *errs.Error {
+	t.Helper()
+	var e *errs.Error
+	require.ErrorAs(t, err, &e)
+	assert.Equal(t, errs.CodeDB, e.Code)
+	return e
+}
+
+// chRow 是 QuerySlice 测试的行结构（与 batch 子包测试各自持有一份），
+// ch tag 与测试列对应。
+type chRow struct {
+	ID   int64  `ch:"id"`
+	Name string `ch:"name"`
+}
+
 type fakeRows struct {
 	driver.Rows // 嵌入接口：未覆盖方法被调用即 panic，由包边界 recover 兜底并暴露
 	next        func() bool

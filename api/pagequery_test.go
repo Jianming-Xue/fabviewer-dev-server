@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/fab-viewer/common-lib/api"
-	"github.com/fab-viewer/common-lib/paging"
+	"github.com/fab-viewer/common-lib/common/paging"
 )
 
 func TestPageQuery(t *testing.T) {
@@ -17,12 +17,12 @@ func TestPageQuery(t *testing.T) {
 		query string
 		want  paging.Query
 	}{
-		{"无参数取默认", "", paging.Query{Page: 1, Size: 20}},
-		{"合法参数原样", "?page=2&size=30", paging.Query{Page: 2, Size: 30}},
-		{"非数字回退默认", "?page=abc&size=xyz", paging.Query{Page: 1, Size: 20}},
-		{"负数修正", "?page=-1&size=-5", paging.Query{Page: 1, Size: 20}},
-		{"超上限截断", "?page=3&size=99999", paging.Query{Page: 3, Size: paging.MaxSize}},
-		{"部分参数", "?size=50", paging.Query{Page: 1, Size: 50}},
+		{"无参数取默认", "", paging.Query{PageIndex: 1, PageSize: 20}},
+		{"合法参数原样", "?pageIndex=2&pageSize=30", paging.Query{PageIndex: 2, PageSize: 30}},
+		{"非数字回退默认", "?pageIndex=abc&pageSize=xyz", paging.Query{PageIndex: 1, PageSize: 20}},
+		{"负数修正", "?pageIndex=-1&pageSize=-5", paging.Query{PageIndex: 1, PageSize: 20}},
+		{"超上限截断", "?pageIndex=3&pageSize=99999", paging.Query{PageIndex: 3, PageSize: paging.MaxSize}},
+		{"部分参数", "?pageSize=50", paging.Query{PageIndex: 1, PageSize: 50}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

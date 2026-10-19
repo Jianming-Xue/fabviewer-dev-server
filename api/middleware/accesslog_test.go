@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/api/middleware"
-	"github.com/fab-viewer/common-lib/logx"
+	"github.com/fab-viewer/common-lib/common/logx"
 )
 
 func TestAccessLogRecords(t *testing.T) {
@@ -27,7 +27,7 @@ func TestAccessLogRecords(t *testing.T) {
 	assert.Equal(t, "info", rec.Level)
 	assert.Equal(t, "access", rec.Msg)
 
-	for _, key := range []string{"method", "path", "status", "latency_ms", "client_ip", "request_id", "bytes"} {
+	for _, key := range []string{"method", "path", "status", "latency_ms", "client_ip", "tx_id", "tx_name", "user", "bytes"} {
 		_, ok := kvGet(rec.KV, key)
 		assert.True(t, ok, "访问日志缺少字段 %s", key)
 	}

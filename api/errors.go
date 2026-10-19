@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/fab-viewer/common-lib/errs"
+	"github.com/fab-viewer/common-lib/common/errs"
 )
 
 // StatusClientClosedRequest 表示客户端主动断开（nginx 惯例 499，非标准状态码）。

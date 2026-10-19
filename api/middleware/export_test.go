@@ -12,5 +12,5 @@ var RandReadForTest = func() func([]byte) (int, error) { return randRead }
 // RestoreRandRead 恢复随机源。
 var RestoreRandRead = func(f func([]byte) (int, error)) { randRead = f }
 
-// NewRequestIDForTest 直接调用内部的 newRequestID。
-var NewRequestIDForTest = newRequestID
+// NewTxIDForTest 直接调用内部的 newTxID。
+var NewTxIDForTest = newTxID

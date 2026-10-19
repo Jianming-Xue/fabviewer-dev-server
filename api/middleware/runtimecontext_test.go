@@ -1,0 +1,151 @@
+package middleware_test
+
+import (
+	"errors"
+	"net/http"
+	"regexp"
+	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/fab-viewer/common-lib/api"
+	"github.com/fab-viewer/common-lib/api/middleware"
+	"github.com/fab-viewer/common-lib/common/actor"
+	"github.com/fab-viewer/common-lib/common/tx"
+)
+
+var txidPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+func TestRuntimeContextFullHeaders(t *testing.T) {
+	var got tx.Tx
+	r := newTestEngine()
+	r.Use(middleware.RuntimeContext())
+	r.GET("/echo", func(c *gin.Context) {
+		got = tx.FromContext(c.Request.Context())
+		c.String(http.StatusOK, got.ID)
+	})
+
+	reqTime := "20261019173000"
+	w := doGetWithHeaders(r, "/echo", map[string]string{
+		api.HeaderTxID:     "tx-42",
+		api.HeaderTxTime:   reqTime,
+		api.HeaderTxName:   "queryUsers",
+		api.HeaderUserName: "zhangsan",
+	})
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, tx.Tx{
+		ID:   "tx-42",
+		Time: time.Date(2026, 10, 19, 17, 30, 0, 0, time.UTC),
+		Name: "queryUsers",
+		User: "zhangsan",
+	}, got, "四字段完整解析进 tx 上下文")
+	assert.Equal(t, "tx-42", w.Body.String(), "请求 context 可读")
+	assert.Equal(t, "tx-42", w.Header().Get(api.HeaderTxID), "响应头回写 txId")
+}
+
+func TestTxOfInHandler(t *testing.T) {
+	r := newTestEngine()
+	r.Use(middleware.RuntimeContext())
+	r.GET("/gin-side", func(c *gin.Context) {
+		g := api.TxOf(c)
+		assert.Equal(t, "tx-7", g.ID)
+		assert.Equal(t, "listOrders", g.Name)
+		c.String(http.StatusOK, api.TxIDOf(c))
+	})
+
+	w := doGetWithHeaders(r, "/gin-side", map[string]string{
+		api.HeaderTxID:   "tx-7",
+		api.HeaderTxName: "listOrders",
+	})
+	assert.Equal(t, "tx-7", w.Body.String(), "TxIDOf 是 TxOf(c).ID 的语法糖")
+}
+
+func TestRuntimeContextTxTimeFallback(t *testing.T) {
+	tests := []struct {
+		name   string
+		header string
+	}{
+		{"缺失兜底服务器时间", ""},
+		{"非法格式兜底服务器时间", "2026/10/19 17:30"},
+		{"位数不对兜底服务器时间", "2026101917"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got tx.Tx
+			before := time.Now().Add(-time.Second)
+			r := newTestEngine()
+			r.Use(middleware.RuntimeContext())
+			r.GET("/e", func(c *gin.Context) { got = tx.FromContext(c.Request.Context()) })
+
+			doGetWithHeaders(r, "/e", map[string]string{
+				api.HeaderTxTime: tt.header,
+			})
+
+			after := time.Now().Add(time.Second)
+			require.False(t, got.Time.Before(before) || got.Time.After(after),
+				"txTime 应兜底为服务器当前时间，实际 %v", got.Time)
+		})
+	}
+}
+
+func TestRuntimeContextUserNameToActor(t *testing.T) {
+	var actorID string
+	r := newTestEngine()
+	r.Use(middleware.RuntimeContext())
+	r.GET("/audit", func(c *gin.Context) {
+		actorID = actor.FromContext(c.Request.Context())
+	})
+
+	doGetWithHeaders(r, "/audit", map[string]string{
+		api.HeaderUserName: "zhangsan",
+	})
+	assert.Equal(t, "zhangsan", actorID, "userName 注入 actor 审计上下文")
+
+	doGet(r, "/audit")
+	assert.Empty(t, actorID, "userName 缺失时不注入 actor")
+}
+
+func TestRuntimeContextTxIDGenerate(t *testing.T) {
+	r := newTestEngine()
+	r.Use(middleware.RuntimeContext())
+	r.GET("/echo", func(c *gin.Context) {
+		c.String(http.StatusOK, api.TxIDOf(c))
+	})
+
+	w := doGet(r, "/echo")
+
+	id := w.Header().Get(api.HeaderTxID)
+	require.NotEmpty(t, id, "响应头必须回写 txId")
+	assert.Regexp(t, txidPattern, id, "生成的 ID 为 32 字符小写 hex")
+	assert.Equal(t, id, w.Body.String(), "上下文中的 ID 与响应头一致")
+}
+
+func TestRuntimeContextTxIDUniqueness(t *testing.T) {
+	seen := make(map[string]struct{}, 100)
+	r := newTestEngine()
+	r.Use(middleware.RuntimeContext())
+	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	for range 100 {
+		id := doGet(r, "/x").Header().Get(api.HeaderTxID)
+		seen[id] = struct{}{}
+	}
+	assert.Len(t, seen, 100, "100 次请求 ID 不得重复")
+}
+
+// 测 crypto/rand 失败的降级分支（注入失败的 randRead）。
+func TestNewTxIDFallback(t *testing.T) {
+	orig := middleware.RandReadForTest()
+	t.Cleanup(func() { middleware.RestoreRandRead(orig) })
+
+	middleware.SetRandRead(func(_ []byte) (int, error) {
+		return 0, errors.New("entropy exhausted")
+	})
+
+	id := middleware.NewTxIDForTest()
+	assert.Regexp(t, regexp.MustCompile(`^t\d+$`), id, "降级为时间戳前缀")
+}

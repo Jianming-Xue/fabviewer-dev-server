@@ -8,3 +8,6 @@ bin/
 .DS_Store
 .idea/
 .vscode/
+
+# Claude Code 本地会话配置
+.claude/

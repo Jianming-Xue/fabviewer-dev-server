@@ -3,11 +3,11 @@
 //
 // 能力一览：
 //
-//	cfg := clickhouse.Config{Addrs: []string{"ch1:9000"}, DB: "analytics", User: "default"}
+//	cfg := chcfg.Config{Addrs: []string{"ch1:9000"}, DB: "analytics", User: "default"}
 //	client, err := clickhouse.Open(ctx, cfg) // Open 即 Ping，配置/网络问题启动期暴露
 //
 //	// 批量写：结构体字段经 ch tag 映射到表列
-//	b, err := clickhouse.NewBatch[sample](ctx, client, "samples", 1000)
+//	b, err := batch.NewBatch[sample](ctx, client, "samples", 1000)
 //	defer b.Close(ctx) // 未达阈值的剩余行在此发送
 //	err = b.Append(sample{ID: 1, Name: "n", Ts: time.Now()})
 //

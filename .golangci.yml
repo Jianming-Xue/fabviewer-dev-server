@@ -56,9 +56,11 @@ linters:
         cross-layer-zero-deps:
           listMode: strict
           files:
-            - "**/errs/**"
-            - "**/paging/**"
-            - "**/logx/**"
+            - "**/common/errs/**"
+            - "**/common/paging/**"
+            - "**/common/logx/**"
+            - "**/common/actor/**"
+            - "**/common/tx/**"
           allow:
             - "$gostd"
             - "github.com/stretchr/testify"

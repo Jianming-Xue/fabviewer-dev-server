@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/fab-viewer/common-lib/api"
-	"github.com/fab-viewer/common-lib/logx"
+	"github.com/fab-viewer/common-lib/common/logx"
 )
 
 type accessLogConfig struct {
@@ -26,7 +26,7 @@ func WithSkipPaths(paths ...string) AccessLogOption {
 }
 
 // AccessLog 记录访问日志：method/path/status/latency_ms/client_ip/
-// request_id/bytes。log 为 nil 时使用 logx.Default()。
+// tx_id/tx_name/user/bytes。log 为 nil 时使用 logx.Default()。
 func AccessLog(log logx.Logger, opts ...AccessLogOption) gin.HandlerFunc {
 	cfg := accessLogConfig{skipPaths: map[string]struct{}{
 		"/healthz": {},
@@ -46,13 +46,16 @@ func AccessLog(log logx.Logger, opts ...AccessLogOption) gin.HandlerFunc {
 		if _, skip := cfg.skipPaths[c.Request.URL.Path]; skip {
 			return
 		}
+		t := api.TxOf(c)
 		log.Info("access",
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
 			"status", c.Writer.Status(),
 			"latency_ms", time.Since(start).Milliseconds(),
 			"client_ip", c.ClientIP(),
-			"request_id", api.RequestIDOf(c),
+			"tx_id", t.ID,
+			"tx_name", t.Name,
+			"user", t.User,
 			"bytes", c.Writer.Size(),
 		)
 	}
