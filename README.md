@@ -24,7 +24,8 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 
 | common-lib 包 | 接口访问层 | 服务层 | 业务聚合层 | 存储层 | 对象层 | main 组装根 |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `common/errs` / `common/paging` / `common/logx` / `common/actor`（跨层，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `common/fverr` / `common/paging` / `common/logx` / `common/actortx`（跨层，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `common/rctx`、`common/i18n`（跨层运行时上下文与多语言表，仅依赖标准库与 `common/rctx`） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `api`、`api/middleware` | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/clickhouse`（`config`/`batch` 子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
 
@@ -147,7 +148,7 @@ r.Use(
     middleware.AccessLog(log),
     middleware.ErrorHandler(log),
     middleware.Recovery(log),
-    middleware.RuntimeContext(),
+    middleware.FillRuntimeContext(),
 )
 
 r.GET("/api/users", func(c *gin.Context) {
@@ -242,7 +243,7 @@ check-layers:
 ## 统一响应体契约（apiresponse）
 
 成功/失败同构（`api.Response`，五字段恒序列化）：**code 即 HTTP 状态码（数字）**，
-**txId 取自请求头 `txId`**（未携带时由 `middleware.RuntimeContext` 生成兜底，透传优先）。
+**txId 取自请求头 `txId`**（未携带时由 `middleware.FillRuntimeContext` 生成兜底，透传优先）。
 
 ```json
 {"code":200,"success":true,"errMsg":"",
@@ -259,30 +260,77 @@ check-layers:
 - 字符串业务错误码（`errs.Code`）与明细（`Details`）不出参：错误码只用于内部映射
   与日志，明细随 `business error` 日志留痕（`ErrorHandler`）。
 
-### 请求运行时上下文（common/tx）
+### 请求运行时上下文（common/rctx.RuntimeContext）
 
-`middleware.RuntimeContext` 解析请求头四个字段，包装为**整个请求期间**可用的
-上下文（`tx.Tx`），三路注入：
+`middleware.FillRuntimeContext` 解析请求头五个字段
+（txId/txTime/txName/userName + 标准头 `Accept-Language`），包装为**整个请求
+期间**可用的上下文（`rctx.RuntimeContext`），
+三路注入：
 
-| 请求头 | tx.Tx 字段 | 兜底规则 |
+| 请求头 | RuntimeContext 字段 | 兜底规则 |
 |---|---|---|
 | `txId` | `ID` | 缺失生成 32 位 hex，透传优先 |
 | `txTime` | `Time` | 格式 yyyyMMDDHHmmss；缺失/解析失败用服务器时间 |
 | `txName` | `Name` | 无（可空） |
-| `userName` | `User` | 无（可空；同时注入 actor 审计上下文） |
+| `userName` | `User` | 无（可空；同时注入 actortx 操作者上下文） |
+| `Accept-Language` | `Lang` | 取 q 值最高的首选语言并规范化（如 `zh-CN`）；缺失/非法为空串，i18n 回退默认语言 |
 
-- **业务层读取**：`tx.FromContext(c.Request.Context())` —— 沿 service/storage
-  全链路可读（跨层会合点，与 actor/paging 同模式）
-- **审计打通**：`userName` 注入 actor 上下文，`oracle/repository` 仓储写库时
+- **业务层读取**：`rctx.GetRuntimeContext(c.Request.Context())` —— 沿 service/storage
+  全链路可读（跨层会合点，与 actortx/paging 同模式）
+- **审计打通**：`userName` 注入 actortx 操作者上下文，`oracle/repository` 仓储写库时
   `BasePO` 的 `CreatedBy`/`UpdatedBy` 自动填充，业务代码零感知
 - **访问日志**：自动携带 `tx_id`/`tx_name`/`user`
 - 定时任务无请求头，任务入口自注入：
-  `ctx = tx.NewContext(ctx, tx.Tx{ID: snowflake.Next(), Name: "daily-settle"})`
+  `ctx = rctx.SetRuntimeContext(ctx, rctx.RuntimeContext{ID: snowflake.Next(), Name: "daily-settle"})`
+
+### 统一错误与国际化（common/fverr + common/i18n + cmd/i18nerr）
+
+`common/fverr` 提供统一业务错误 **FvError**（Code/Message/Err/Details 四字段）：
+出口只输出 Message，Code 查状态码表、根因与明细全进日志。**每模块自己的多语言
+表**：错误文案按语言写成 Go 文件（`messages_<语言>.go`，编译期进包），生成器
+产出模块字典与构造函数——创建错误时按请求语言查模板插参，**出口不做翻译**，
+直出 Message。完整示例见 `examples/apifull`（usererrors + ordererrors 双模块）。
+
+```go
+// 1. 模块内按语言写消息文件 messages_<语言>.go（文件名即语言，key 即 code，
+//    {0} {1} 为位置占位符，各语言占位符在句中位置可不同）
+var MessagesEn = map[string]string{"UserNotFound": "user {0} not found"}
+var MessagesZh = map[string]string{"UserNotFound": "用户 {0} 不存在"}
+
+// 2. 生成 Code 常量、模块字典句柄 ErrorCode 与构造函数（与文件 key 一一对齐）
+//    cd usererrors && go run github.com/fab-viewer/common-lib/cmd/i18nerr \
+//        -dir . -pkg usererrors -default en
+
+// 3. 错误处一行创建：按请求语言查模板 → 插参 → 补根因明细
+return usererrors.NewUserNotFound(ctx).
+    InsertArgs(id).                      // {0} 按调用序替换
+    AttachError(rootErr, map[string]any{"id": id})  // 只进日志
+
+// 删除确认等带实体名的消息（角色名/用户名/登录策略名同理）：
+_ = c.Error(usererrors.NewConfirmDeleteUser(ctx).InsertArgs(u.Name))
+// → zh："确认删除用户 zhangsan 吗？"  en："confirm deleting user zhangsan?"
+
+// 4. 出口（ErrorHandler）直出 Message；模块码经 WithStatusMap 映射状态码
+r.Use(middleware.ErrorHandler(log,
+    middleware.WithStatusMap(map[fverr.Code]int{
+        usererrors.CodeUserNotFound: http.StatusNotFound,
+    }), ...)
+```
+
+- **唯一构造函数**：`fverr.NewError(code, message, args...)`——Message 直传、
+  args 按序替换 {0} {1} 占位符（模块构造函数内部先查字典再交给它；基础设施层
+  直传 message，根因经 `.AttachError(err, nil)` 链上）
+- **判断**：`fverr.IsError(err)`、`fverr.From(err)`（errors.Is/As 全兼容）
+- **语言来源**：标准头 `Accept-Language`（q 值降序取首选并规范化），经
+  `FillRuntimeContext` 注入 `rctx.RuntimeContext.Lang`，全链路可读
+- **回退链**：请求语言精确 → 基础语言（`zh-CN` → `zh`，只收窄不放宽）→
+  模块默认语言 → key 原文
+- 多模块各自字典互不感知（无全局注册、无跨模块 key 冲突）；表并发安全
 
 业务错误码 → HTTP 状态码映射（`api.DefaultStatusMap`，可经 `middleware.WithStatusMap` 增补；
 映射结果同时决定 HTTP 状态与响应 code）：
 
-| errs.Code | HTTP（即响应 code） |
+| fverr.Code | HTTP（即响应 code） |
 |---|---|
 | OK | 200 |
 | VALIDATION_ERROR | 400 |
@@ -294,8 +342,8 @@ check-layers:
 | INTERNAL_ERROR / DB_ERROR | 500 |
 | UPSTREAM_ERROR | 502 |
 
-- 业务扩展码自带前缀（如 `const CodeUserDisabled errs.Code = "USER_DISABLED"`），
-  经 `WithStatusMap` 映射状态码；未映射的自定义码按 500 处理。
+- 模块码（如 `usererrors.CodeUserNotFound`）经 `WithStatusMap` 映射状态码；
+  未映射的自定义码按 500 处理。
 - 未知错误的根因只进日志不进响应（`ErrorHandler` 统一兜底）。
 - `gorm.ErrRecordNotFound` / `sql.ErrNoRows` 在 `ErrorHandler` 中内置翻译为 404。
 
@@ -358,7 +406,7 @@ make integration
 make fmt       # gofmt + goimports（提交前跑）
 ```
 
-覆盖率分级：跨层包（common/errs、common/paging、common/logx）与 api ≥99%；存储包装层 ≥95%（握手类路径由
+覆盖率分级：跨层包（common/fverr、common/paging、common/logx）与 api ≥99%；存储包装层 ≥95%（握手类路径由
 集成测试兜底）。
 
 ## 示例

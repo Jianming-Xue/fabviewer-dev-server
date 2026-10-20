@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/fab-viewer/common-lib/common/actor"
+	"github.com/fab-viewer/common-lib/common/actortx"
 )
 
 // BasePO 是库提供的基础审计 PO：ID + 创建人/创建时间/修改人/修改时间五个
@@ -19,7 +19,7 @@ import (
 //
 // 审计字段由 GORM 钩子自动填充（直接用 GORM 出口也生效）：
 //   - BeforeCreate：创建/修改时间置当前时间，创建/修改人取上下文操作者
-//     （api 层经 api.WithActor 注入，定时任务经 actor.NewContext 注入）；
+//     （api 层经 api.WithActor 注入，定时任务经 actortx.SetActorContext 注入）；
 //     已手工赋值的字段不覆盖
 //   - BeforeUpdate：修改时间置当前时间、修改人取上下文操作者
 //
@@ -50,7 +50,7 @@ func (b *BasePO) BeforeCreate(tx *gorm.DB) error {
 	if b.UpdatedAt.IsZero() {
 		b.UpdatedAt = now
 	}
-	who := actor.FromContext(tx.Statement.Context)
+	who := actortx.GetActorContext(tx.Statement.Context)
 	if who != "" {
 		if b.CreatedBy == "" {
 			b.CreatedBy = who
@@ -66,7 +66,7 @@ func (b *BasePO) BeforeCreate(tx *gorm.DB) error {
 // 需要跳过审计时使用 UpdateColumns（GORM 约定不触发钩子）。
 func (b *BasePO) BeforeUpdate(tx *gorm.DB) error {
 	b.UpdatedAt = time.Now()
-	if who := actor.FromContext(tx.Statement.Context); who != "" {
+	if who := actortx.GetActorContext(tx.Statement.Context); who != "" {
 		b.UpdatedBy = who
 	}
 	return nil

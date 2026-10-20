@@ -9,39 +9,47 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/fab-viewer/common-lib/api"
-	"github.com/fab-viewer/common-lib/common/actor"
-	"github.com/fab-viewer/common-lib/common/tx"
+	"github.com/fab-viewer/common-lib/common/actortx"
+	"github.com/fab-viewer/common-lib/common/i18n"
+	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
-// RuntimeContext 构建请求运行时上下文：解析请求头 txId/txTime/txName/userName
-// 组装为 tx.Tx，三路注入——
+// FillRuntimeContext 构建请求运行时上下文的中间件工厂：解析请求头
+// txId/txTime/txName/userName 与标准头 Accept-Language（取首选语言，
+// i18n.ParseAcceptLanguage 规范化）组装为 rctx.RuntimeContext，三路注入——
 //
-//   - 请求 context（tx.NewContext）：service/storage 层经 tx.FromContext 全链路可读
-//   - actor 上下文（actor.NewContext，取 userName）：oracle 审计钩子自动填
+//   - 请求 context（rctx.SetRuntimeContext）：service/storage 层经 rctx.GetRuntimeContext
+//     全链路可读
+//   - 操作者上下文（actortx.SetActorContext，取 userName）：oracle 审计钩子
+//     自动填
 //     CreatedBy/UpdatedBy（userName 为空不注入）
-//   - gin.Context（key 为 api.CtxTx）：响应体 txId 字段读取
+//   - gin.Context（key 为 api.CtxRuntimeContext）：响应体 txId 字段读取
 //
 // 兜底规则：txId 缺失用 crypto/rand 生成 16 字节 hex（缺失兜底行为待定，
-// 如需调整只改本函数）；txTime 缺失或非 yyyyMMDDHHmmss 用服务器时间。
+// 如需调整只改本函数）；txTime 缺失或非 yyyyMMDDHHmmss 用服务器时间；
+// Accept-Language 缺失/非法时 Lang 为空串（i18n 翻译回退默认语言）。
 // 统一回写响应头 txId。
-func RuntimeContext() gin.HandlerFunc {
+func FillRuntimeContext() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		t := tx.Tx{
+		rc := rctx.RuntimeContext{
 			ID:   c.GetHeader(api.HeaderTxID),
 			Time: parseTxTime(c.GetHeader(api.HeaderTxTime)),
 			Name: c.GetHeader(api.HeaderTxName),
 			User: c.GetHeader(api.HeaderUserName),
 		}
-		if t.ID == "" {
-			t.ID = newTxID()
+		if rc.ID == "" {
+			rc.ID = newTxID()
 		}
-		c.Set(api.CtxTx, t)
+		if langs := i18n.ParseAcceptLanguage(c.GetHeader(api.HeaderAcceptLanguage)); len(langs) > 0 {
+			rc.Lang = string(langs[0])
+		}
+		c.Set(api.CtxRuntimeContext, rc)
 
-		ctx := tx.NewContext(c.Request.Context(), t)
-		ctx = actor.NewContext(ctx, t.User)
+		ctx := rctx.SetRuntimeContext(c.Request.Context(), rc)
+		ctx = actortx.SetActorContext(ctx, rc.User)
 		c.Request = c.Request.WithContext(ctx)
 
-		c.Header(api.HeaderTxID, t.ID)
+		c.Header(api.HeaderTxID, rc.ID)
 		c.Next()
 	}
 }

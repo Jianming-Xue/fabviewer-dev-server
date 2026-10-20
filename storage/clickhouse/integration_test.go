@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/storage/clickhouse"
+	"github.com/fab-viewer/common-lib/storage/clickhouse/batch"
+	"github.com/fab-viewer/common-lib/storage/clickhouse/config"
 )
 
 // itRow 与集成测试表列经 ch tag 对应。
@@ -25,7 +27,7 @@ type itRow struct {
 
 // configFromDSN 读取 COMMON_LIB_CH_DSN（形如
 // clickhouse://user:pass@host:port/db）并转为 Config；未设置时 skip。
-func configFromDSN(t *testing.T) clickhouse.Config {
+func configFromDSN(t *testing.T) config.Config {
 	t.Helper()
 	dsn := os.Getenv("COMMON_LIB_CH_DSN")
 	if dsn == "" {
@@ -33,7 +35,7 @@ func configFromDSN(t *testing.T) clickhouse.Config {
 	}
 	opts, err := ch.ParseDSN(dsn)
 	require.NoError(t, err, "解析 COMMON_LIB_CH_DSN 失败")
-	return clickhouse.Config{
+	return config.Config{
 		Addrs:    opts.Addr,
 		DB:       opts.Auth.Database,
 		User:     opts.Auth.Username,
@@ -62,7 +64,7 @@ func TestIntegrationBatchAndQuerySlice(t *testing.T) {
 
 	const total, threshold = 120, 50
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	b, err := clickhouse.NewBatch[itRow](ctx, client, table, threshold)
+	b, err := batch.NewBatch[itRow](ctx, client, table, threshold)
 	require.NoError(t, err)
 
 	want := make([]itRow, 0, total)

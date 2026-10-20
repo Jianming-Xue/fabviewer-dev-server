@@ -25,13 +25,37 @@
 
 ### Added
 
+- 统一业务错误重构为 `common/fverr.FvError`（四字段 Code/Message/Err/Details，
+  出口只输出 Message、其余全进日志）。API 收敛为唯一构造
+  `NewError(code, message, args...)` + 链式 `InsertArgs`（按序替换 `{0}` `{1}`
+  位置占位符，各语言占位符在句中位置不同不受影响——删除确认等需带实体名的
+  消息即此模式）+ `AttachError`（补根因明细）+ `IsError`/`From`；业务层的多语言
+  创建经模块构造函数（内部查模块字典后交给 NewError，见 cmd/i18nerr）。
+  原 `common/errs` 包删除，迁移对照：`errs.New/Newf→fverr.NewError(code, msg
+  [, args...])`、`errs.Wrap/Wrapf→fverr.NewError(...).AttachError(err, nil)`、
+  `errs.Error→fverr.FvError`、`errs.Code→fverr.Code`（fmt 动词改为 {n} 占位符）、
+  sentinel 同名保留；`api.DefaultStatusMap`/`WithStatusMap`/`WithMessageFunc`
+  键类型随之改为 `fverr.Code`/`*fverr.FvError`
+- 后端请求国际化 `common/i18n`：**只提供能力、不内置文案**，译文由业务服务
+  每模块自行维护。`i18n.Bundles`（语言→key→模板，RWMutex 并发安全）+ 回退链
+  （请求语言 → 基础语言只收窄不放宽 → 默认语言 → key 原文）+
+  `ParseAcceptLanguage` 解析标准 Accept-Language 头（q 值降序、规范化）；
+  模板占位符为位置式 `{0}` `{1}`。生成器 `cmd/i18nerr` 从模块内
+  `messages_<语言>.go` 生成 `errors_gen.go`（Code 常量、模块字典句柄
+  `ErrorCode`、每 key 一个构造函数），模块字典跟模块包走、**无全局注册**；
+  出口（ErrorHandler）**不做翻译**，直出 Message（原 WithI18N 选项删除）。
+  接入链路：`rctx.RuntimeContext.Lang` 承载请求语言（FillRuntimeContext
+  解析 `Accept-Language` 注入）；`api` 新增 `HeaderAcceptLanguage` 常量与
+  `api.LangOf` 语法糖；`WithMessageFunc` 保留为逃生舱口（返回空串保留原
+  Message）
 - 新增 [STATUS.md](STATUS.md)（仓库实时状态、git 快照、待定决策、已知问题、
   质量门槛现状）与 [HANDOVER.md](HANDOVER.md)（交接文档：设计理念、包地图、
   三大契约 wire 格式、开发验证流程、未完成事项与约定速记）
-- 请求运行时上下文 `common/tx`：请求头 txId/txTime（yyyyMMDDHHmmss，缺失或解析
-  失败兜底服务器时间）/txName/userName 由 `middleware.RuntimeContext` 组装为
-  `tx.Tx` 注入请求 context，业务层经 `tx.FromContext` 全链路读取；userName
-  同时注入 actor 审计上下文（oracle BasePO 的 CreatedBy/UpdatedBy 自动填充）；
+- 请求运行时上下文 `common/rctx.RuntimeContext`：请求头 txId/txTime
+  （yyyyMMDDHHmmss，缺失或解析失败兜底服务器时间）/txName/userName 由
+  `middleware.FillRuntimeContext` 组装为 `rctx.RuntimeContext` 注入请求
+  context，业务层经 `rctx.GetRuntimeContext` 全链路读取；userName
+  同时注入 actortx 操作者上下文（oracle BasePO 的 CreatedBy/UpdatedBy 自动填充）；
   访问日志新增 tx_name/user 字段
 
 ### Changed（Breaking：API 层契约重设计）
@@ -41,9 +65,17 @@
   （`errs.Code`）、`message`/`data`/`details`/`requestId`/`timestamp` 字段移出响应体；
   `errs.Code` 转为纯内部映射键，Details 随 `business error` 日志留痕
 - 事务 ID 通道变更：请求头 `X-Request-Id` → `txId`；`middleware.RequestID()`
-  → `RuntimeContext()`（经 TxID 演进而来）；`api.HeaderRequestID/CtxRequestID/RequestIDOf`
-  → `HeaderTxID/CtxTx/TxOf/TxIDOf`；访问日志字段 `request_id` → `tx_id`
+  → `FillRuntimeContext()`（经 TxID 演进而来）；`api.HeaderRequestID/CtxRequestID/RequestIDOf`
+  → `HeaderTxID/CtxRuntimeContext/RuntimeContextOf/TxIDOf`；访问日志字段 `request_id` → `tx_id`
   （txId 缺失时生成兜底的行为待定，暂保持生成）
+- 运行时上下文命名对齐（概念名回归"RuntimeContext"）：包 `common/tx` → `common/rctx`、
+  类型 `tx.Tx` → `rctx.RuntimeContext`、中间件工厂 `RuntimeContext()` →
+  `FillRuntimeContext()`、`api.TxOf` → `api.RuntimeContextOf`、
+  `api.CtxTx` → `api.CtxRuntimeContext`；业务迁移对照：
+  `common-lib/common/tx` → `common-lib/common/rctx`、`tx.Tx{...}` →
+  `rctx.RuntimeContext{...}`、`tx.NewContext/FromContext` → `rctx.SetRuntimeContext/FromContext`、
+  `middleware.RuntimeContext()` → `middleware.FillRuntimeContext()`、
+  `api.TxOf` → `api.RuntimeContextOf`
 - 分页契约变更：入参 `page`/`size` → `pageIndex`/`pageSize`；出参 `paging.Result`
   → `paging.Pageable`（`pageSize/pageIndex/totalSize/data`），`NewResult` → `NewPageable`；
   `paging.Query` 字段 `Page`/`Size` → `PageIndex`/`PageSize`（`Limit()/Offset()/Normalize()`
@@ -55,8 +87,8 @@
 ### Changed（目录重组）
 
 - 目录重组（结构清晰化，公共 API 符号零变化，仅 import 路径变更）：
-  - 跨层基础包挪入 `common/`：`errs` → `common/errs`、`paging` → `common/paging`、
-    `logx` → `common/logx`、`actor` → `common/actor`
+  - 跨层基础包挪入 `common/`：`errs` → `common/errs`（后演化为 `common/fverr`）、`paging` → `common/paging`、
+    `logx` → `common/logx`、`actor` → `common/actortx`
   - 雪花 ID 归属存储：`snowflake` → `storage/snowflake`（Oracle Repository 内部
     消费）；storage 根保留 `PoolConfig`
   - 业务系统升级需批量替换 import 路径（符号与调用点零改动），如：
@@ -69,6 +101,14 @@
   PO 未导出由编译器强制隐藏存储细节、原生 SQL 直出 VO 的标准姿势、ClickHouse
   ch tag 权衡）与定时器业务适配清单（九项：分层裁剪、VO↔PO 直转、错误处理、
   日志、事务、优雅退出、depguard 调整等）
+
+### Fixed
+
+- 修复存储层分包（Unreleased 第 4 轮）遗漏更新的三处 integration 标签测试
+  （常规 build/vet/lint 因构建标签跳过而未暴露，`go vet -tags=integration`
+  才可见）：oracle/conn 的 `DefaultPort` 与缺失 `config` import、clickhouse
+  的 `Config`/`NewBatch`、opensearch 的 `Config`/`Search`/`WithPaging`/
+  `WithSorts`——均按迁移对照表改指向 config/batch/search 子包
 
 ## [0.5.1] - 2026-10-15
 
@@ -139,7 +179,7 @@
 
 ### Added
 
-- `errs`：统一业务错误码体系（Code/Error/sentinel/Wrap，errors.Is/As 全兼容）
+- `fverr`：统一业务错误 FvError（Code/Message/Err/Details，errors.Is/As 全兼容）
 - `paging`：分页值对象 Query/Result[T]（非法值修正、空 items 序列化为 `[]`）
 - `logx`：最小 Logger 接口 + slog 适配 + Nop（SetDefault 并发安全）
 - `api`：统一响应体 Body 与 OK/Created/NoContent/OKPage/Fail、PageQuery
@@ -159,4 +199,4 @@
 
 - 工程骨架：go.mod（module github.com/fab-viewer/common-lib）、golangci-lint v2
   配置（含库内 depguard 架构防腐规则）、Makefile
-- 跨层基础包 errs/paging/logx 完整实现与单测（覆盖率 100%）
+- 跨层基础包 errs（后演化为 fverr）/paging/logx 完整实现与单测（覆盖率 100%）

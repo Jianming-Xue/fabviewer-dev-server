@@ -20,7 +20,7 @@ module 名为占位、业务方经 `replace` 本地引用）。被两类业务�
    （Gin 依赖从这里开始）；`storage/*` 只准存储层 import；`common/*` 跨层通用。
    由 `.golangci.yml` depguard 强制（deny 是前缀匹配，能命中全部子包）。
 2. **跨层会合点**：`api` 与 `storage` 互不感知，只在小包相会——
-   `errs`（错误语义）、`paging`（分页对象）、`actor`（操作者）、`tx`（事务上下文）。
+   `fverr`（统一错误 FvError）、`paging`（分页对象）、`actortx`（操作者）、`rctx`（运行时上下文）。
    需要两边共享的概念，加包而不是加依赖。
 3. **DTO/VO/PO 对象流转**：DTO 只在 api 层进出；VO 是 storage 对上的唯一边界
    类型（禁止 gorm/ch tag）；PO 未导出锁死在业务存储包内（编译器强制）。
@@ -33,11 +33,12 @@ module 名为占位、业务方经 `replace` 本地引用）。被两类业务�
 ## 3. 包地图
 
 ```
-common/errs      Code 错误码、Error（Wrap/New/From）、sentinel
+common/fverr    FvError（唯一构造 NewError(code,msg,args...)，链式 InsertArgs/AttachError，IsError/From）
 common/paging    Query{PageIndex,PageSize}、Pageable[T]（出参 pageable）
 common/logx      Logger 五方法接口、slog 适配、全局默认出口
-common/actor     操作者 context 传递（审计字段的来源）
-common/tx        Tx{ID,Time,Name,User} 运行时上下文（请求头四字段）
+common/actortx   操作者 context 记录与传递（审计字段的来源；SetActorContext/GetActorContext）
+common/rctx      RuntimeContext{ID,Time,Name,User,Lang} 运行时上下文（请求头四字段 + Accept-Language）
+common/i18n      Bundles 多语言消息集 + Accept-Language 解析（只提供能力，译文业务自注册；仅依赖 tx）
 api              Response/OK/OKPage/Fail、PageQuery、DefaultStatusMap
 api/middleware   AccessLog → ErrorHandler → Recovery → RuntimeContext（顺序固定）
 storage/oracle/conn        Open、DB 三通道（GORM/SQL/存储过程）、Cursor、driverAdapter
@@ -48,9 +49,11 @@ storage/clickhouse(+config/batch)   Open/Client/QuerySlice；Batch[T] 批量写
 storage/opensearch(+config/search)  Open/Client/Index/Get/Delete；Search[T] 泛型搜索
 storage/snowflake  点分隔雪花 ID（"<Unix毫秒>.<节点>.<序列>"）
 storage/pool.go    PoolConfig 连接池配置
+cmd/i18nerr        模块错误字典生成器（messages_<语言>.go → errors_gen.go）
+examples/          apifull（含 i18n 完整示例）/ oracleproc / chbatch / ossearch
 ```
 
-依赖方向（无环）：config ← conn ← repository；base 只依赖 actor+gorm；
+依赖方向（无环）：config ← conn ← repository；base 只依赖 actortx+gorm；
 batch/search 依赖各自根包；所有存储子包互不依赖（depguard 强制）。
 
 ## 4. 三大对外契约（wire 格式）
@@ -62,7 +65,7 @@ batch/search 依赖各自根包；所有存储子包互不依赖（depguard 强�
 {"code":404,"success":false,"errMsg":"user 999 not found","contents":null,"txId":"abc"}
 ```
 
-- `code` = HTTP 状态码（数字），由 `errs.Code → DefaultStatusMap` 映射产生
+- `code` = HTTP 状态码（数字），由 `fverr.Code → DefaultStatusMap` 映射产生
 - 字符串错误码与 Details **不出参**，随 `business error` 日志留痕
 - 业务错误统一走 `c.Error(err)` → ErrorHandler，handler 不自写错误响应
 
@@ -74,16 +77,34 @@ batch/search 依赖各自根包；所有存储子包互不依赖（depguard 强�
 
 ### 4.3 请求运行时上下文
 
-请求头四字段 → `middleware.RuntimeContext` → `tx.Tx` 三路注入：
+请求头四字段 + `Accept-Language` → `middleware.FillRuntimeContext` →
+`rctx.RuntimeContext` 三路注入：
 
-| header | tx.Tx | 兜底 |
+| header | RuntimeContext | 兜底 |
 |---|---|---|
 | txId | ID | 缺失生成 32 hex（**行为待定**，改 `runtimecontext.go` 一处） |
 | txTime | Time | yyyyMMDDHHmmss；缺失/非法→服务器时间 |
 | txName | Name | 可空 |
-| userName | User | 可空；同时注入 actor → oracle BasePO 审计自动填充 |
+| userName | User | 可空；同时注入 actortx → oracle BasePO 审计自动填充 |
+| Accept-Language | Lang | q 值降序取首选并规范化；缺失/非法为空串 |
 
-业务层读取：`tx.FromContext(c.Request.Context())`。
+业务层读取：`rctx.GetRuntimeContext(c.Request.Context())`。
+
+### 4.4 错误消息国际化
+
+`common/i18n` 只提供能力、译文由业务服务自注册；errMsg 按请求语言翻译：
+
+- 接入（每模块自己的多语言表，编译期进包、无全局注册）：模块内
+  `messages_<语言>.go`（key 即 code，{0} {1} 位置占位符）→
+  `cmd/i18nerr -dir . -pkg xxx -default en` 生成 `errors_gen.go`（Code 常量、
+  ErrorCode 字典句柄、构造函数）→ 调用处 `xxx.NewUserNotFound(ctx).
+  InsertArgs(id).AttachError(root, details)`——构造函数内部按请求语言查模板后交给
+  `fverr.NewError`；出口直出 Message 不翻译（`ErrorHandler` 已无 WithI18N）
+- 回退链：请求语言 → 基础语言（只收窄不放宽）→ 默认语言 → key 兜底模板
+  （默认语言即开发语言时，未注册的 key 原样即文案）
+- 删除确认等带实体名的消息：模板 `{0}` + `InsertArgs(name)`（角色名/用户名/
+  登录策略名同理，各语言占位符位置不同不受影响，见 examples/apifull 的
+  DELETE /api/users/:id）；模块码经 `WithStatusMap` 映射状态码
 
 ## 5. 开发与验证
 

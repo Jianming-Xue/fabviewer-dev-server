@@ -7,8 +7,10 @@
 //	接口访问层  → api、api/middleware（仅此层可 import，Gin 依赖从这里开始）
 //	存储层      → storage/oracle、storage/clickhouse、storage/opensearch、
 //	              storage/snowflake（ID 生成）、storage 根（PoolConfig）
-//	所有层      → common/errs、common/paging、common/logx、common/actor
-//	              （零三方依赖的跨层包）
+//	所有层      → common/fverr、common/paging、common/logx、common/actortx
+//	              （零三方依赖的跨层包）、common/rctx（请求运行时上下文
+//	              RuntimeContext）、common/i18n（错误消息国际化，只提供
+//	              能力、译文业务自注册）
 //
 // 快速开始（业务系统 go.mod）：
 //
@@ -17,7 +19,7 @@
 // REST 接口层示例：
 //
 //	r.Use(middleware.ErrorHandler(log), middleware.Recovery(log),
-//	      middleware.AccessLog(log), middleware.RuntimeContext())
+//	      middleware.AccessLog(log), middleware.FillRuntimeContext())
 //	q := api.PageQuery(c)
 //	api.OKPage(c, res)
 //

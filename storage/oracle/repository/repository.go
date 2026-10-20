@@ -5,7 +5,7 @@ package repository
 import (
 	"context"
 
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 	"github.com/fab-viewer/common-lib/storage/oracle/base"
 	"github.com/fab-viewer/common-lib/storage/oracle/conn"
 	"github.com/fab-viewer/common-lib/storage/snowflake"
@@ -22,7 +22,7 @@ import (
 //	    OrderNo string
 //	}
 //	repo, err := repository.NewRepository[orderPO](db)
-//	err = repo.Create(ctx, &po)  // ctx 来自 middleware.RuntimeContext（userName）或 actor.NewContext
+//	err = repo.Create(ctx, &po)  // ctx 来自 middleware.FillRuntimeContext（userName）或 actortx.SetActorContext
 //	err = repo.Update(ctx, &po)
 //
 // T 必须嵌入 BasePO，否则 Create/Update 返回校验错误；需要之外的写法时
@@ -34,7 +34,7 @@ type Repository[T any] struct {
 // NewRepository 构建仓储。
 func NewRepository[T any](db *conn.DB) (*Repository[T], error) {
 	if db == nil {
-		return nil, errs.New(errs.CodeValidation, "repository.NewRepository db 不能为 nil")
+		return nil, fverr.NewError(fverr.CodeValidation, "repository.NewRepository db 不能为 nil")
 	}
 	return &Repository[T]{db: db}, nil
 }
@@ -49,7 +49,7 @@ func (r *Repository[T]) Create(ctx context.Context, po *T) error {
 		bp.ID = snowflake.Next()
 	}
 	if err := r.db.GORM().WithContext(ctx).Create(po).Error; err != nil {
-		return errs.Wrap(err, errs.CodeDB, "repository.Create")
+		return fverr.NewError(fverr.CodeDB, "repository.Create").AttachError(err, nil)
 	}
 	return nil
 }
@@ -60,7 +60,7 @@ func (r *Repository[T]) Update(ctx context.Context, po *T) error {
 		return err
 	}
 	if err := r.db.GORM().WithContext(ctx).Save(po).Error; err != nil {
-		return errs.Wrap(err, errs.CodeDB, "repository.Update")
+		return fverr.NewError(fverr.CodeDB, "repository.Update").AttachError(err, nil)
 	}
 	return nil
 }
@@ -69,8 +69,7 @@ func (r *Repository[T]) Update(ctx context.Context, po *T) error {
 func baseOf[T any](po *T) (*base.BasePO, error) {
 	v, ok := any(po).(interface{ auditBase() *base.BasePO })
 	if !ok || v == nil {
-		return nil, errs.New(errs.CodeValidation,
-			"repository.Repository 的类型参数必须嵌入 base.BasePO")
+		return nil, fverr.NewError(fverr.CodeValidation, "repository.Repository 的类型参数必须嵌入 base.BasePO")
 	}
 	return v.auditBase(), nil
 }

@@ -11,7 +11,7 @@ import (
 
 	"github.com/fab-viewer/common-lib/api"
 	"github.com/fab-viewer/common-lib/api/middleware"
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 )
 
 // TestFullStack 验证推荐的注册顺序下各中间件协作：
@@ -23,11 +23,11 @@ func TestFullStack(t *testing.T) {
 		middleware.AccessLog(log),
 		middleware.ErrorHandler(log),
 		middleware.Recovery(log),
-		middleware.RuntimeContext(),
+		middleware.FillRuntimeContext(),
 	)
 	r.GET("/ok", func(c *gin.Context) { api.OK(c, gin.H{"x": 1}) })
 	r.GET("/fail", func(c *gin.Context) {
-		_ = c.Error(errs.New(errs.CodeNotFound, "user not found"))
+		_ = c.Error(fverr.NewError(fverr.CodeNotFound, "user not found"))
 	})
 	r.GET("/panic", func(_ *gin.Context) { panic("stack boom") })
 

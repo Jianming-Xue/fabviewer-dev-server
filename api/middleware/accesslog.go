@@ -46,16 +46,16 @@ func AccessLog(log logx.Logger, opts ...AccessLogOption) gin.HandlerFunc {
 		if _, skip := cfg.skipPaths[c.Request.URL.Path]; skip {
 			return
 		}
-		t := api.TxOf(c)
+		rc := api.RuntimeContextOf(c)
 		log.Info("access",
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
 			"status", c.Writer.Status(),
 			"latency_ms", time.Since(start).Milliseconds(),
 			"client_ip", c.ClientIP(),
-			"tx_id", t.ID,
-			"tx_name", t.Name,
-			"user", t.User,
+			"tx_id", rc.ID,
+			"tx_name", rc.Name,
+			"user", rc.User,
 			"bytes", c.Writer.Size(),
 		)
 	}

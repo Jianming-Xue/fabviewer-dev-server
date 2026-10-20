@@ -8,25 +8,29 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 	"github.com/fab-viewer/common-lib/common/paging"
-	"github.com/fab-viewer/common-lib/common/tx"
+	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
 const (
-	// HeaderTxID 是事务 ID 的请求/响应头字段名（请求携带则透传，见 middleware.RuntimeContext）。
+	// HeaderTxID 是事务 ID 的请求/响应头字段名（请求携带则透传，见 middleware.FillRuntimeContext）。
 	HeaderTxID = "txId"
 	// HeaderTxTime 是事务时间的请求头字段名，格式 yyyyMMDDHHmmss
 	// （缺失/非法由中间件兜底服务器时间）。
 	HeaderTxTime = "txTime"
 	// HeaderTxName 是事务名称的请求头字段名。
 	HeaderTxName = "txName"
-	// HeaderUserName 是操作用户名的请求头字段名（同时注入 actor 审计上下文）。
+	// HeaderUserName 是操作用户名的请求头字段名（同时注入 actortx 操作者上下文）。
 	HeaderUserName = "userName"
+	// HeaderAcceptLanguage 是标准请求语言头（值如 "zh-CN,zh;q=0.9,en;q=0.8"，
+	// 由 middleware.FillRuntimeContext 解析首选语言规范化后注入
+	// rctx.RuntimeContext.Lang）。
+	HeaderAcceptLanguage = "Accept-Language"
 
-	// CtxTx 是 gin.Context 中存放请求运行时上下文 tx.Tx 的 key，
-	// 由 middleware.RuntimeContext 写入。
-	CtxTx = "commonlib.tx"
+	// CtxRuntimeContext 是 gin.Context 中存放请求运行时上下文
+	// rctx.RuntimeContext 的 key，由 middleware.FillRuntimeContext 写入。
+	CtxRuntimeContext = "commonlib.runtimecontext"
 )
 
 // Response 是统一响应体 apiresponse，成功/失败同构（五字段恒序列化）：
@@ -34,8 +38,8 @@ const (
 //	{"code":200,"success":true,"errMsg":"","contents":{...},"txId":"..."}
 //	{"code":404,"success":false,"errMsg":"...","contents":null,"txId":"..."}
 //
-// code 即 HTTP 状态码（数字）；txId 取自请求头 txId（未启用 RuntimeContext 中间件时为空）。
-// 业务字符串错误码（errs.Code）与 Details 不出参，只用于内部映射与日志。
+// code 即 HTTP 状态码（数字）；txId 取自请求头 txId（未启用 FillRuntimeContext 中间件时为空）。
+// 业务字符串错误码（fverr.Code）与 Details 不出参，只用于内部映射与日志。
 type Response struct {
 	Code     int    `json:"code"`
 	Success  bool   `json:"success"`
@@ -54,20 +58,28 @@ func NewResponse(c *gin.Context, status int, errMsg string) Response {
 	}
 }
 
-// TxOf 从 gin.Context 取请求运行时上下文（未启用 RuntimeContext 中间件时为零值）。
-func TxOf(c *gin.Context) tx.Tx {
-	v, ok := c.Get(CtxTx)
+// RuntimeContextOf 从 gin.Context 取请求运行时上下文（未启用
+// FillRuntimeContext 中间件时为零值）。
+func RuntimeContextOf(c *gin.Context) rctx.RuntimeContext {
+	v, ok := c.Get(CtxRuntimeContext)
 	if !ok {
-		return tx.Tx{}
+		return rctx.RuntimeContext{}
 	}
-	t, _ := v.(tx.Tx)
-	return t
+	rc, _ := v.(rctx.RuntimeContext)
+	return rc
 }
 
-// TxIDOf 从 gin.Context 取事务 ID，是 TxOf(c).ID 的语法糖
-// （未启用 RuntimeContext 中间件时为空字符串）。
+// TxIDOf 从 gin.Context 取事务 ID，是 RuntimeContextOf(c).ID 的语法糖
+// （未启用 FillRuntimeContext 中间件时为空字符串）。
 func TxIDOf(c *gin.Context) string {
-	return TxOf(c).ID
+	return RuntimeContextOf(c).ID
+}
+
+// LangOf 从 gin.Context 取请求语言（规范化如 "zh-CN"；未启用
+// FillRuntimeContext 中间件或请求未携带 Accept-Language 时为空字符串），
+// 是 RuntimeContextOf(c).Lang 的语法糖。
+func LangOf(c *gin.Context) string {
+	return RuntimeContextOf(c).Lang
 }
 
 // Write 将 Response 以 JSON 写回并设置 HTTP 状态码；响应已写过时跳过（防双写）。
@@ -106,7 +118,7 @@ func OKPage[T any](c *gin.Context, p paging.Pageable[T]) {
 }
 
 // Fail 写回失败响应，与 middleware.ErrorHandler 使用同一套默认映射：
-// *errs.Error 按码表映射；sql.ErrNoRows → 404；context.Canceled → 499；
+// *fverr.FvError 按码表映射；sql.ErrNoRows → 404；context.Canceled → 499；
 // 其余 → 500 且根因不进响应。code 即映射出的 HTTP 状态码。
 // 注意 gorm.ErrRecordNotFound 的翻译只在 middleware.ErrorHandler 中内置
 // （避免 api 包引入 GORM 依赖）。
@@ -114,7 +126,7 @@ func Fail(c *gin.Context, err error) {
 	if c.Writer.Written() {
 		return
 	}
-	var e *errs.Error
+	var e *fverr.FvError
 	if errors.As(err, &e) {
 		r := NewResponse(c, StatusFor(e.Code), e.Message)
 		Write(c, r.Code, &r)

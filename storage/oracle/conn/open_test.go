@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/utils/tests"
 
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 	"github.com/fab-viewer/common-lib/storage"
 	"github.com/fab-viewer/common-lib/storage/oracle/config"
 )
@@ -103,9 +103,9 @@ func TestOpenValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := Open(context.Background(), tt.mut(validCfg()))
 			assert.Error(t, err)
-			e, ok := errs.From(err)
+			e, ok := fverr.From(err)
 			assert.True(t, ok)
-			assert.Equal(t, errs.CodeValidation, e.Code)
+			assert.Equal(t, fverr.CodeValidation, e.Code)
 		})
 	}
 }
@@ -120,9 +120,9 @@ func TestOpenPingFailureClosesPool(t *testing.T) {
 
 	_, err := Open(context.Background(), validCfg(), withDriver(drv))
 	assert.Error(t, err)
-	e, ok := errs.From(err)
+	e, ok := fverr.From(err)
 	assert.True(t, ok)
-	assert.Equal(t, errs.CodeDB, e.Code)
+	assert.Equal(t, fverr.CodeDB, e.Code)
 	assert.Contains(t, err.Error(), "oracle.Ping")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -220,9 +220,9 @@ func TestOpenExtractSQLDBError(t *testing.T) {
 	cfg.PrepareStmt = &no
 	_, err := Open(context.Background(), cfg, withDriver(drv))
 	assert.Error(t, err)
-	e, ok := errs.From(err)
+	e, ok := fverr.From(err)
 	assert.True(t, ok)
-	assert.Equal(t, errs.CodeDB, e.Code)
+	assert.Equal(t, fverr.CodeDB, e.Code)
 	assert.Contains(t, err.Error(), "提取 *sql.DB")
 }
 
@@ -231,9 +231,9 @@ func TestCloseError(t *testing.T) {
 	mock.ExpectClose().WillReturnError(errors.New("close refused"))
 	err := db.Close()
 	assert.Error(t, err)
-	e, ok := errs.From(err)
+	e, ok := fverr.From(err)
 	assert.True(t, ok)
-	assert.Equal(t, errs.CodeDB, e.Code)
+	assert.Equal(t, fverr.CodeDB, e.Code)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

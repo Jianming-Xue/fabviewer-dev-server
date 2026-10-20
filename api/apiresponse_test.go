@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/api"
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 	"github.com/fab-viewer/common-lib/common/paging"
-	"github.com/fab-viewer/common-lib/common/tx"
+	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
 // respBody 是统一响应体的测试解码目标（与 api.Response 字段一一对应）。
@@ -68,7 +68,7 @@ func TestOK(t *testing.T) {
 func TestOKCarriesTxID(t *testing.T) {
 	r := newTestEngine()
 	r.GET("/ok", func(c *gin.Context) {
-		c.Set(api.CtxTx, tx.Tx{ID: "tx-123"})
+		c.Set(api.CtxRuntimeContext, rctx.RuntimeContext{ID: "tx-123"})
 		api.OK(c, nil)
 	})
 
@@ -132,25 +132,25 @@ func TestFail(t *testing.T) {
 	}{
 		{
 			name:       "已知错误码按码表映射",
-			err:        errs.New(errs.CodeNotFound, "user 42 not found"),
+			err:        fverr.NewError(fverr.CodeNotFound, "user 42 not found"),
 			wantStatus: http.StatusNotFound,
 			wantErrMsg: "user 42 not found",
 		},
 		{
 			name:       "带明细不出参",
-			err:        errs.New(errs.CodeValidation, "参数非法").WithDetail("field", "email"),
+			err:        fverr.NewError(fverr.CodeValidation, "参数非法").AttachError(nil, map[string]any{"field": "email"}),
 			wantStatus: http.StatusBadRequest,
 			wantErrMsg: "参数非法",
 		},
 		{
 			name:       "包装错误沿用外层语义",
-			err:        errs.Wrap(errors.New("dial timeout"), errs.CodeDB, "query orders"),
+			err:        fverr.NewError(fverr.CodeDB, "query orders").AttachError(errors.New("dial timeout"), nil),
 			wantStatus: http.StatusInternalServerError,
 			wantErrMsg: "query orders",
 		},
 		{
 			name:       "未映射自定义码按 500",
-			err:        errs.New(errs.Code("USER_DISABLED"), "账号已禁用"),
+			err:        fverr.NewError(fverr.Code("USER_DISABLED"), "账号已禁用"),
 			wantStatus: http.StatusInternalServerError,
 			wantErrMsg: "账号已禁用",
 		},
@@ -219,7 +219,7 @@ func TestFailSkipsWhenWritten(t *testing.T) {
 	r := newTestEngine()
 	r.GET("/f", func(c *gin.Context) {
 		c.String(http.StatusOK, "first")
-		api.Fail(c, errs.New(errs.CodeNotFound, "ignored"))
+		api.Fail(c, fverr.NewError(fverr.CodeNotFound, "ignored"))
 	})
 
 	w := doRequest(t, r, http.MethodGet, "/f")
@@ -227,9 +227,26 @@ func TestFailSkipsWhenWritten(t *testing.T) {
 }
 
 func TestStatusFor(t *testing.T) {
-	assert.Equal(t, http.StatusOK, api.StatusFor(errs.CodeOK))
-	assert.Equal(t, http.StatusNotFound, api.StatusFor(errs.CodeNotFound))
-	assert.Equal(t, http.StatusBadGateway, api.StatusFor(errs.CodeUpstream))
-	assert.Equal(t, http.StatusInternalServerError, api.StatusFor(errs.Code("CUSTOM_X")),
+	assert.Equal(t, http.StatusOK, api.StatusFor(fverr.CodeOK))
+	assert.Equal(t, http.StatusNotFound, api.StatusFor(fverr.CodeNotFound))
+	assert.Equal(t, http.StatusBadGateway, api.StatusFor(fverr.CodeUpstream))
+	assert.Equal(t, http.StatusInternalServerError, api.StatusFor(fverr.Code("CUSTOM_X")),
 		"未映射码按 500")
+}
+
+func TestLangOf(t *testing.T) {
+	t.Run("未启用 RuntimeContext 时为空", func(t *testing.T) {
+		r := newTestEngine()
+		r.GET("/l", func(c *gin.Context) { c.String(http.StatusOK, api.LangOf(c)) })
+		assert.Empty(t, doRequest(t, r, http.MethodGet, "/l").Body.String())
+	})
+
+	t.Run("读取注入的语言", func(t *testing.T) {
+		r := newTestEngine()
+		r.GET("/l", func(c *gin.Context) {
+			c.Set(api.CtxRuntimeContext, rctx.RuntimeContext{Lang: "zh-CN"})
+			c.String(http.StatusOK, api.LangOf(c))
+		})
+		assert.Equal(t, "zh-CN", doRequest(t, r, http.MethodGet, "/l").Body.String())
+	})
 }

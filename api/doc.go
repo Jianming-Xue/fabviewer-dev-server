@@ -21,8 +21,10 @@
 //
 // 中间件注册顺序固定（见 middleware 包文档）：
 //
-//	AccessLog → ErrorHandler → Recovery → RuntimeContext → 路由
+//	AccessLog → ErrorHandler → Recovery → FillRuntimeContext → 路由
 //
-// RuntimeContext 解析请求头 txId/txTime/txName/userName 组装为 tx.Tx 注入
-// 请求上下文（业务层经 tx.FromContext 读取），userName 同时注入 actor 审计链路。
+// FillRuntimeContext 解析请求头 txId/txTime/txName/userName 与标准头
+// Accept-Language 组装为 rctx.RuntimeContext 注入请求上下文（业务层经
+// rctx.GetRuntimeContext 读取），
+// userName 同时注入 actortx 操作者链路，Lang 供 common/i18n 按请求语言翻译。
 package api

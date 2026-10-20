@@ -5,7 +5,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 	clickhouse "github.com/fab-viewer/common-lib/storage/clickhouse"
 )
 
@@ -68,31 +68,30 @@ func NewBatch[T any](ctx context.Context, c *clickhouse.Client, table string, si
 func newBatch[T any](ctx context.Context, pb prepareBatcher, table string, size int) (b *Batch[T], err error) {
 	defer func() { // 反射/网络路径在包边界 recover，不向业务方泄漏 panic
 		if r := recover(); r != nil {
-			b, err = nil, errs.Newf(errs.CodeDB, "clickhouse.NewBatch table=%s: %v", table, r)
+			b, err = nil, fverr.NewError(fverr.CodeDB, "clickhouse.NewBatch table={0}: {1}", table, r)
 		}
 	}()
 	sender, err := pb.PrepareBatch(ctx, "INSERT INTO "+table)
 	if err != nil {
-		return nil, errs.Wrapf(err, errs.CodeDB, "clickhouse.NewBatch table=%s", table)
+		return nil, fverr.NewError(fverr.CodeDB, "clickhouse.NewBatch table={0}", table).AttachError(err, nil)
 	}
 	return &Batch[T]{sender: sender, table: table, size: size}, nil
 }
 
 // Append 追加一行（经 ch tag 反射填充）。缓冲达到 size 阈值时自动发送已
 // 缓冲行并重置计数，Batch 继续可用。追加失败或自动发送失败均返回
-// errs.CodeDB 错误；自动发送失败时计数不重置，下次 Append 或显式 Flush 会
+// fverr.CodeDB 错误；自动发送失败时计数不重置，下次 Append 或显式 Flush 会
 // 重试发送。Close 之后调用返回错误。
 func (b *Batch[T]) Append(v T) error {
 	if b.closed {
-		return errs.Newf(errs.CodeDB, "clickhouse.Batch.Append table=%s: batch 已关闭", b.table)
+		return fverr.NewError(fverr.CodeDB, "clickhouse.Batch.Append table={0}: batch 已关闭", b.table)
 	}
 	if err := b.append(v); err != nil {
 		return err
 	}
 	if b.size > 0 && b.count >= b.size {
 		if err := b.send(); err != nil {
-			return errs.Wrapf(err, errs.CodeDB,
-				"clickhouse.Batch.Append table=%s size=%d 达到阈值自动发送失败", b.table, b.size)
+			return fverr.NewError(fverr.CodeDB, "clickhouse.Batch.Append table={0} size={1} 达到阈值自动发送失败", b.table, b.size).AttachError(err, nil)
 		}
 	}
 	return nil
@@ -102,11 +101,11 @@ func (b *Batch[T]) Append(v T) error {
 func (b *Batch[T]) append(v T) (err error) {
 	defer func() { // 反射路径在包边界 recover
 		if r := recover(); r != nil {
-			err = errs.Newf(errs.CodeDB, "clickhouse.Batch.Append table=%s: %v", b.table, r)
+			err = fverr.NewError(fverr.CodeDB, "clickhouse.Batch.Append table={0}: {1}", b.table, r)
 		}
 	}()
 	if err := b.sender.AppendStruct(&v); err != nil {
-		return errs.Wrapf(err, errs.CodeDB, "clickhouse.Batch.Append table=%s", b.table)
+		return fverr.NewError(fverr.CodeDB, "clickhouse.Batch.Append table={0}", b.table).AttachError(err, nil)
 	}
 	b.count++
 	return nil
@@ -116,13 +115,13 @@ func (b *Batch[T]) append(v T) (err error) {
 // ctx 已取消时直接返回错误，不发起发送。Close 之后调用返回错误。
 func (b *Batch[T]) Flush(ctx context.Context) error {
 	if b.closed {
-		return errs.Newf(errs.CodeDB, "clickhouse.Batch.Flush table=%s: batch 已关闭", b.table)
+		return fverr.NewError(fverr.CodeDB, "clickhouse.Batch.Flush table={0}: batch 已关闭", b.table)
 	}
 	if err := ctx.Err(); err != nil {
-		return errs.Wrapf(err, errs.CodeDB, "clickhouse.Batch.Flush table=%s: ctx 已取消", b.table)
+		return fverr.NewError(fverr.CodeDB, "clickhouse.Batch.Flush table={0}: ctx 已取消", b.table).AttachError(err, nil)
 	}
 	if err := b.send(); err != nil {
-		return errs.Wrapf(err, errs.CodeDB, "clickhouse.Batch.Flush table=%s", b.table)
+		return fverr.NewError(fverr.CodeDB, "clickhouse.Batch.Flush table={0}", b.table).AttachError(err, nil)
 	}
 	return nil
 }
@@ -147,12 +146,12 @@ func (b *Batch[T]) Close(ctx context.Context) error {
 	b.closed = true // 先置终态：即使失败也不再重试，保证幂等语义确定
 	if err := ctx.Err(); err != nil {
 		_ = b.sender.Close() // 释放底层连接（不发送）
-		return errs.Wrapf(err, errs.CodeDB, "clickhouse.Batch.Close table=%s: ctx 已取消", b.table)
+		return fverr.NewError(fverr.CodeDB, "clickhouse.Batch.Close table={0}: ctx 已取消", b.table).AttachError(err, nil)
 	}
 	sendErr := b.sender.Send()
 	closeErr := b.sender.Close() // SDK 语义：Send 后 Close 为安全的收尾
 	if sendErr != nil {
-		return clickhouse.WrapDB(sendErr, "clickhouse.Batch.Close table=%s Send", b.table)
+		return clickhouse.WrapDB(sendErr, "clickhouse.Batch.Close table={0} Send", b.table)
 	}
-	return clickhouse.WrapDB(closeErr, "clickhouse.Batch.Close table=%s Close", b.table)
+	return clickhouse.WrapDB(closeErr, "clickhouse.Batch.Close table={0} Close", b.table)
 }

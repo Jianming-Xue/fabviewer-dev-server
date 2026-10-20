@@ -43,5 +43,5 @@
 //	    OrderNo string
 //	}
 //	repo, err := repository.NewRepository[orderPO](db)
-//	err = repo.Create(ctx, &po) // ID 自动雪花，CreatedBy 取 userName/actor 上下文
+//	err = repo.Create(ctx, &po) // ID 自动雪花，CreatedBy 取 userName/actortx 上下文
 package oracle

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 	"github.com/fab-viewer/common-lib/storage"
 )
 
@@ -76,18 +76,18 @@ func (c Config) WithDefaults() Config { //nolint:gocritic // 配置值对象按�
 // Validate 检查连接必需字段与枚举取值，返回带上下文的业务错误。
 func (c Config) Validate() error { //nolint:gocritic // 配置值对象按值传递保证不可变语义
 	if c.User == "" {
-		return errs.Newf(errs.CodeValidation, "oracle.Config.User 不能为空")
+		return fverr.NewError(fverr.CodeValidation, "oracle.Config.User 不能为空")
 	}
 	if c.Host == "" {
-		return errs.Newf(errs.CodeValidation, "oracle.Config.Host 不能为空")
+		return fverr.NewError(fverr.CodeValidation, "oracle.Config.Host 不能为空")
 	}
 	if c.ServiceName == "" {
-		return errs.Newf(errs.CodeValidation, "oracle.Config.ServiceName 不能为空")
+		return fverr.NewError(fverr.CodeValidation, "oracle.Config.ServiceName 不能为空")
 	}
 	switch c.LogLevel {
 	case LogLevelSilent, LogLevelError, LogLevelWarn, LogLevelInfo:
 	default:
-		return errs.Newf(errs.CodeValidation, "oracle.Config.LogLevel 非法取值 %q", c.LogLevel)
+		return fverr.NewError(fverr.CodeValidation, "oracle.Config.LogLevel 非法取值 {0}", c.LogLevel)
 	}
 	return nil
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
 
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 	clickhouse "github.com/fab-viewer/common-lib/storage/clickhouse"
 )
 
@@ -32,12 +32,12 @@ func newTestBatch(t *testing.T) (*Batch[chRow], *MockBatchSender) {
 	return b, sender
 }
 
-// asDBError 断言 err 是 errs.CodeDB 并返回它。
-func asDBError(t *testing.T, err error) *errs.Error {
+// asDBError 断言 err 是 fverr.CodeDB 并返回它。
+func asDBError(t *testing.T, err error) *fverr.FvError {
 	t.Helper()
-	var e *errs.Error
+	var e *fverr.FvError
 	require.ErrorAs(t, err, &e)
-	assert.Equal(t, errs.CodeDB, e.Code)
+	assert.Equal(t, fverr.CodeDB, e.Code)
 	return e
 }
 

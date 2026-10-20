@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 	"github.com/fab-viewer/common-lib/common/paging"
 )
 
@@ -113,10 +113,10 @@ func TestSearch(t *testing.T) {
 			"status": 404}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, errs.ErrNotFound)
-		e, ok := errs.From(err)
+		require.ErrorIs(t, err, fverr.ErrNotFound)
+		e, ok := fverr.From(err)
 		require.True(t, ok)
-		assert.Equal(t, errs.CodeNotFound, e.Code)
+		assert.Equal(t, fverr.CodeNotFound, e.Code)
 		assert.Contains(t, err.Error(), "no such index [orders]")
 		assert.Contains(t, err.Error(), "opensearch.Search index=orders")
 		ft.assertAllClosed(t)
@@ -130,7 +130,7 @@ func TestSearch(t *testing.T) {
 			"status": 400}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", map[string]any{"match": "bad-query"})
-		require.ErrorIs(t, err, errs.ErrValidation)
+		require.ErrorIs(t, err, fverr.ErrValidation)
 		assert.Contains(t, err.Error(), "query_shard_exception: Failed to parse query")
 		ft.assertAllClosed(t)
 	})
@@ -140,7 +140,7 @@ func TestSearch(t *testing.T) {
 			"error": {"type": "internal_error", "reason": "node crashed"}, "status": 500}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, errs.ErrDB)
+		require.ErrorIs(t, err, fverr.ErrDB)
 		ft.assertAllClosed(t)
 	})
 
@@ -148,7 +148,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{status: http.StatusInternalServerError, body: `cluster down`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, errs.ErrDB)
+		require.ErrorIs(t, err, fverr.ErrDB)
 		ft.assertAllClosed(t)
 	})
 
@@ -156,7 +156,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{status: http.StatusTooManyRequests, body: `{"error":"too many","status":429}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, errs.ErrTooMany)
+		require.ErrorIs(t, err, fverr.ErrTooMany)
 		ft.assertAllClosed(t)
 	})
 
@@ -164,7 +164,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{failErr: context.DeadlineExceeded}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, errs.ErrDB)
+		require.ErrorIs(t, err, fverr.ErrDB)
 		assert.Contains(t, err.Error(), "opensearch.Search index=orders")
 	})
 
@@ -175,7 +175,7 @@ func TestSearch(t *testing.T) {
 			]}}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, errs.ErrDB)
+		require.ErrorIs(t, err, fverr.ErrDB)
 		assert.Contains(t, err.Error(), "_id=o-9")
 		ft.assertAllClosed(t)
 	})
@@ -185,7 +185,7 @@ func TestSearch(t *testing.T) {
 		cli := newFakeClient(t, ft)
 		for _, sort := range []string{"", "-", "+"} {
 			_, err := Search[orderDoc](ctx, cli, "orders", nil, WithSorts(sort))
-			require.ErrorIs(t, err, errs.ErrValidation, "排序项 %q 应被拒绝", sort)
+			require.ErrorIs(t, err, fverr.ErrValidation, "排序项 %q 应被拒绝", sort)
 		}
 		assert.Equal(t, 0, ft.requestCount())
 	})
@@ -194,7 +194,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", map[string]any{"fn": func() {}})
-		require.ErrorIs(t, err, errs.ErrValidation)
+		require.ErrorIs(t, err, fverr.ErrValidation)
 		assert.Equal(t, 0, ft.requestCount())
 	})
 
@@ -202,7 +202,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "", nil)
-		require.ErrorIs(t, err, errs.ErrValidation)
+		require.ErrorIs(t, err, fverr.ErrValidation)
 		assert.Equal(t, 0, ft.requestCount())
 	})
 }

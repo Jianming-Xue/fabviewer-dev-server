@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/fab-viewer/common-lib/api/middleware"
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 	"github.com/fab-viewer/common-lib/common/logx"
 )
 
@@ -34,19 +34,24 @@ func TestErrorHandlerCodeMap(t *testing.T) {
 		err        error
 		wantStatus int
 	}{
-		{"validation", errs.New(errs.CodeValidation, "email 格式不正确"), http.StatusBadRequest},
-		{"unauthorized", errs.New(errs.CodeUnauthorized, "未登录"), http.StatusUnauthorized},
-		{"forbidden", errs.New(errs.CodeForbidden, "无权限"), http.StatusForbidden},
-		{"not found", errs.New(errs.CodeNotFound, "user not found"), http.StatusNotFound},
-		{"conflict", errs.New(errs.CodeConflict, "已存在"), http.StatusConflict},
-		{"too many", errs.New(errs.CodeTooMany, "限流"), http.StatusTooManyRequests},
-		{"internal", errs.New(errs.CodeInternal, "内部错误"), http.StatusInternalServerError},
-		{"db", errs.Wrap(errors.New("dial tcp: refused"), errs.CodeDB, "query orders"), http.StatusInternalServerError},
-		{"upstream", errs.New(errs.CodeUpstream, "下游不可用"), http.StatusBadGateway},
+		{"validation", fverr.NewError(fverr.CodeValidation, "email 格式不正确"), http.StatusBadRequest},
+		{"unauthorized", fverr.NewError(fverr.CodeUnauthorized, "未登录"), http.StatusUnauthorized},
+		{"forbidden", fverr.NewError(fverr.CodeForbidden, "无权限"), http.StatusForbidden},
+		{"not found", fverr.NewError(fverr.CodeNotFound, "user not found"), http.StatusNotFound},
+		{"conflict", fverr.NewError(fverr.CodeConflict, "已存在"), http.StatusConflict},
+		{"too many", fverr.NewError(fverr.CodeTooMany, "限流"), http.StatusTooManyRequests},
+		{"internal", fverr.NewError(fverr.CodeInternal, "内部错误"), http.StatusInternalServerError},
+		{"db", fverr.NewError(fverr.CodeDB, "query orders").AttachError(errors.New("dial tcp: refused"), nil), http.StatusInternalServerError},
+		{"upstream", fverr.NewError(fverr.CodeUpstream, "下游不可用"), http.StatusBadGateway},
 		{"gorm not found", gorm.ErrRecordNotFound, http.StatusNotFound},
 		{"wrapped gorm not found", fmt.Errorf("load: %w", gorm.ErrRecordNotFound), http.StatusNotFound},
+		// FvError 按自身 Code 映射（出口 errors.As 先拦截，根因不参与状态码）：
+		// 业务要 NOT_FOUND 语义应自身携带 CodeNotFound，而非靠根因
+		{"fverr carrying gorm not found as root",
+			fverr.NewError(fverr.CodeDB, "repository.Create").AttachError(gorm.ErrRecordNotFound, nil),
+			http.StatusInternalServerError},
 		{"sql no rows", sql.ErrNoRows, http.StatusNotFound},
-		{"custom code unmapped", errs.New(errs.Code("USER_DISABLED"), "账号已禁用"), http.StatusInternalServerError},
+		{"module code unmapped", fverr.NewError(fverr.Code("USER_DISABLED"), "账号已禁用"), http.StatusInternalServerError},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -67,12 +72,37 @@ func TestErrorHandlerCodeMap(t *testing.T) {
 	}
 }
 
+func TestErrorHandlerFvMessageDirectOutput(t *testing.T) {
+	// FvError 的 Message 创建时已翻译（fverr.New 查模块字典 + InsertArgs），
+	// 出口直接输出，不做翻译。
+	log := &captureLogger{}
+	r := newTestEngine()
+	r.Use(
+		middleware.ErrorHandler(log),
+		middleware.FillRuntimeContext(),
+	)
+	r.GET("/e", func(c *gin.Context) {
+		_ = c.Error(fverr.NewError(fverr.CodeNotFound, "用户 42 不存在").AttachError(errors.New("root"), nil))
+	})
+
+	w := doGet(r, "/e")
+	var b errBody
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
+	assert.Equal(t, "用户 42 不存在", b.ErrMsg, "Message 直出，出口不翻译")
+	assert.Equal(t, http.StatusNotFound, b.Code)
+
+	records := log.snapshot()
+	require.Len(t, records, 1)
+	code, _ := kvGet(records[0].KV, "code")
+	assert.Equal(t, "NOT_FOUND", code, "错误码进日志")
+}
+
 func TestErrorHandlerDetailsToLogNotResponse(t *testing.T) {
 	log := &captureLogger{}
 	r := newTestEngine()
 	r.Use(middleware.ErrorHandler(log))
 	r.GET("/e", func(c *gin.Context) {
-		_ = c.Error(errs.New(errs.CodeValidation, "参数非法").WithDetail("field", "email"))
+		_ = c.Error(fverr.NewError(fverr.CodeValidation, "参数非法").AttachError(nil, map[string]any{"field": "email"}))
 	})
 
 	w := doGet(r, "/e")
@@ -89,7 +119,7 @@ func TestErrorHandlerDetailsToLogNotResponse(t *testing.T) {
 	assert.Equal(t, "info", records[0].Level, "业务错误按 info 记录")
 	assert.Equal(t, "business error", records[0].Msg)
 	code, _ := kvGet(records[0].KV, "code")
-	assert.Equal(t, string(errs.CodeValidation), code, "字符串错误码进日志")
+	assert.Equal(t, string(fverr.CodeValidation), code, "字符串错误码进日志")
 	details, _ := kvGet(records[0].KV, "details")
 	assert.Contains(t, details, "email", "明细进日志")
 }
@@ -130,36 +160,33 @@ func TestErrorHandlerUnknownError(t *testing.T) {
 func TestErrorHandlerWithStatusMap(t *testing.T) {
 	log := &captureLogger{}
 	r := newTestEngine()
-	r.Use(middleware.ErrorHandler(log, middleware.WithStatusMap(map[errs.Code]int{
-		errs.Code("USER_DISABLED"): http.StatusForbidden,
+	r.Use(middleware.ErrorHandler(log, middleware.WithStatusMap(map[fverr.Code]int{
+		fverr.Code("USER_DISABLED"): http.StatusForbidden,
 	})))
-	r.GET("/e", func(c *gin.Context) { _ = c.Error(errs.New(errs.Code("USER_DISABLED"), "禁用")) })
+	r.GET("/e", func(c *gin.Context) { _ = c.Error(fverr.NewError(fverr.Code("USER_DISABLED"), "禁用")) })
 
 	w := doGet(r, "/e")
-	assert.Equal(t, http.StatusForbidden, w.Code, "自定义码经 WithStatusMap 映射")
+	assert.Equal(t, http.StatusForbidden, w.Code, "模块码经 WithStatusMap 映射")
 }
 
 func TestErrorHandlerWithMessageFunc(t *testing.T) {
 	log := &captureLogger{}
 	r := newTestEngine()
-	r.Use(middleware.ErrorHandler(log, middleware.WithMessageFunc(func(_ *errs.Error) string {
-		return "i18n: not found"
+	r.Use(middleware.ErrorHandler(log, middleware.WithMessageFunc(func(_ *gin.Context, _ *fverr.FvError) string {
+		return "overridden"
 	})))
-	r.GET("/e", func(c *gin.Context) { _ = c.Error(errs.New(errs.CodeNotFound, "raw message")) })
-	r.GET("/keep", func(c *gin.Context) {
-		_ = c.Error(errs.New(errs.CodeNotFound, "kept message"))
-	})
+	r.GET("/e", func(c *gin.Context) { _ = c.Error(fverr.NewError(fverr.CodeNotFound, "raw message")) })
 
 	var b errBody
 	require.NoError(t, json.Unmarshal(doGet(r, "/e").Body.Bytes(), &b))
-	assert.Equal(t, "i18n: not found", b.ErrMsg)
+	assert.Equal(t, "overridden", b.ErrMsg)
 
 	// messageFn 返回空串时保留原 errMsg
 	r2 := newTestEngine()
-	r2.Use(middleware.ErrorHandler(log, middleware.WithMessageFunc(func(_ *errs.Error) string {
+	r2.Use(middleware.ErrorHandler(log, middleware.WithMessageFunc(func(_ *gin.Context, _ *fverr.FvError) string {
 		return ""
 	})))
-	r2.GET("/e", func(c *gin.Context) { _ = c.Error(errs.New(errs.CodeNotFound, "kept message")) })
+	r2.GET("/e", func(c *gin.Context) { _ = c.Error(fverr.NewError(fverr.CodeNotFound, "kept message")) })
 	require.NoError(t, json.Unmarshal(doGet(r2, "/e").Body.Bytes(), &b))
 	assert.Equal(t, "kept message", b.ErrMsg)
 }
@@ -169,8 +196,8 @@ func TestErrorHandlerMultipleErrorsUsesLast(t *testing.T) {
 	r := newTestEngine()
 	r.Use(middleware.ErrorHandler(log))
 	r.GET("/e", func(c *gin.Context) {
-		_ = c.Error(errs.New(errs.CodeInternal, "first"))
-		_ = c.Error(errs.New(errs.CodeNotFound, "second"))
+		_ = c.Error(fverr.NewError(fverr.CodeInternal, "first"))
+		_ = c.Error(fverr.NewError(fverr.CodeNotFound, "second"))
 	})
 
 	var b errBody
@@ -185,7 +212,7 @@ func TestErrorHandlerSkipsWhenWritten(t *testing.T) {
 	r.Use(middleware.ErrorHandler(log))
 	r.GET("/e", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"written": true})
-		_ = c.Error(errs.New(errs.CodeNotFound, "ignored"))
+		_ = c.Error(fverr.NewError(fverr.CodeNotFound, "ignored"))
 	})
 
 	w := doGet(r, "/e")

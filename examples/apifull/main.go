@@ -1,5 +1,6 @@
 // Command apifull 演示 common-lib API 组件的完整用法：四个中间件的推荐注册
-// 顺序、请求运行时上下文、统一响应体、分页参数解析与优雅停机。
+// 顺序、请求运行时上下文、统一响应体、分页参数解析、错误消息国际化与
+// 优雅停机。
 //
 // 启动：
 //
@@ -11,7 +12,10 @@
 //	curl -i -H 'txId: my-tx-1' -H 'txTime: 20261019173000' \
 //	     -H 'txName: getUser' -H 'userName: zhangsan' \
 //	     http://localhost:8080/api/users/1
-//	curl -i http://localhost:8080/api/users/999   # 404 统一错误体
+//	curl -i http://localhost:8080/api/users/999                    # 404 默认英文
+//	curl -i -H 'Accept-Language: zh-CN' http://localhost:8080/api/users/999  # 中文错误消息
+//	curl -i -H 'Accept-Language: zh-CN' http://localhost:8080/api/orders/1  # 第二个模块的中文消息
+//	curl -i -X DELETE -H 'Accept-Language: zh-CN' http://localhost:8080/api/users/3  # 删除确认（带用户名）
 //	curl -i http://localhost:8080/api/boom        # panic → 500 统一体
 //	curl -i http://localhost:8080/healthz
 package main
@@ -31,10 +35,17 @@ import (
 
 	"github.com/fab-viewer/common-lib/api"
 	"github.com/fab-viewer/common-lib/api/middleware"
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 	"github.com/fab-viewer/common-lib/common/logx"
 	"github.com/fab-viewer/common-lib/common/paging"
+	"github.com/fab-viewer/common-lib/examples/apifull/ordererrors"
+	"github.com/fab-viewer/common-lib/examples/apifull/usererrors"
 )
+
+// 错误文案是本示例（业务服务）自己的配置：各模块（usererrors / ordererrors）
+// 包内按语言写成 Go 文件（messages_en.go / messages_zh.go，编译期直接进包），
+// 生成器产出各自的 ErrorCode 字典与构造函数——模块字典跟着模块包走，
+// 无需全局注册；创建错误时按请求语言查模板，出口直出 Message 不翻译。
 
 // user 模拟业务对象层的 DTO。
 type user struct {
@@ -59,13 +70,18 @@ func (r *userRepo) list(_ context.Context, q paging.Query) (paging.Pageable[user
 	return paging.NewPageable[user](q, int64(len(r.data)), r.data[start:end]), nil
 }
 
-func (r *userRepo) get(_ context.Context, id int64) (user, error) {
+// get 模拟存储层读单条：NewUserNotFound(ctx) 创建时按请求语言查出模板
+// （如 "用户 {0} 不存在"），InsertArgs 按序替换占位符，AttachError 补根因
+// 与明细（只进日志）。
+func (r *userRepo) get(ctx context.Context, id int64) (user, error) {
 	for _, u := range r.data {
 		if u.ID == id {
 			return u, nil
 		}
 	}
-	return user{}, errs.Wrapf(errs.ErrNotFound, errs.CodeNotFound, "user %d not found", id)
+	return user{}, usererrors.NewUserNotFound(ctx).
+		InsertArgs(id).
+		AttachError(fverr.ErrNotFound, map[string]any{"id": id})
 }
 
 func main() {
@@ -79,9 +95,17 @@ func main() {
 	// AccessLog 最外层，保证错误路径记录的 status 是最终值
 	r.Use(
 		middleware.AccessLog(log),
-		middleware.ErrorHandler(log),
+		middleware.ErrorHandler(log,
+			// 模块自定义码需映射状态码（未映射按 500）
+			middleware.WithStatusMap(map[fverr.Code]int{
+				usererrors.CodeInvalidUserID:     http.StatusBadRequest,
+				usererrors.CodeUserNotFound:      http.StatusNotFound,
+				usererrors.CodeConfirmDeleteUser: http.StatusConflict,
+				ordererrors.CodeOrderNotFound:    http.StatusNotFound,
+			}),
+		),
 		middleware.Recovery(log),
-		middleware.RuntimeContext(),
+		middleware.FillRuntimeContext(),
 	)
 
 	r.GET("/healthz", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
@@ -100,7 +124,8 @@ func main() {
 			ID int64 `uri:"id" binding:"required"`
 		}
 		if err := c.ShouldBindUri(&req); err != nil {
-			_ = c.Error(errs.Wrap(err, errs.CodeValidation, "参数 id 非法"))
+			// 错误处直接调模块构造函数：创建时即按请求语言查出 Message
+			_ = c.Error(usererrors.NewInvalidUserID(c.Request.Context()))
 			return
 		}
 		u, err := repo.get(c.Request.Context(), req.ID)
@@ -110,6 +135,12 @@ func main() {
 		}
 		api.OK(c, u)
 	})
+	apiGroup.GET("/orders/:id", func(c *gin.Context) {
+		// 演示多模块：ordererrors 与 usererrors 各自维护语言字典、互不感知
+		_ = c.Error(ordererrors.NewOrderNotFound(c.Request.Context()))
+	})
+	apiGroup.DELETE("/users/:id", func(c *gin.Context) { deleteUser(c, repo) })
+
 	apiGroup.GET("/boom", func(_ *gin.Context) { panic("demo panic") })
 
 	srv := &http.Server{
@@ -139,6 +170,32 @@ func main() {
 		log.Error("graceful shutdown failed", "err", err)
 	}
 	log.Info("bye")
+}
+
+// deleteUser 演示删除确认：确认 Message 必须带上被删对象的 Name（用户名/
+// 角色名/登录策略名同理），模板占位符 {0} + InsertArgs(name) 组合，各语言
+// 语序不同也不受影响。业务服务（如 security-management 的用户/角色/登录
+// 策略删除）照此模式接入。
+func deleteUser(c *gin.Context, repo *userRepo) {
+	var req struct {
+		ID int64 `uri:"id" binding:"required"`
+	}
+	if err := c.ShouldBindUri(&req); err != nil {
+		_ = c.Error(usererrors.NewInvalidUserID(c.Request.Context()))
+		return
+	}
+	u, err := repo.get(c.Request.Context(), req.ID)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	if c.Query("confirm") != "true" {
+		// 未确认：返回带用户名的确认消息，前端弹确认框
+		_ = c.Error(usererrors.NewConfirmDeleteUser(c.Request.Context()).
+			InsertArgs(u.Name))
+		return
+	}
+	api.NoContent(c)
 }
 
 func seedUsers(n int) []user {

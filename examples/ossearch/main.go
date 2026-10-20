@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 	"github.com/fab-viewer/common-lib/common/paging"
 	"github.com/fab-viewer/common-lib/storage/opensearch"
 	oscfg "github.com/fab-viewer/common-lib/storage/opensearch/config"
@@ -95,7 +95,7 @@ func main() {
 		fail("Get 失败", err)
 	}
 	if !found {
-		fail("Get 失败", errs.New(errs.CodeNotFound, "文档未找到"))
+		fail("Get 失败", fverr.NewError(fverr.CodeNotFound, "文档未找到"))
 	}
 	fmt.Printf("Get ok: id=%s status=%s\n", got.ID, got.Status)
 

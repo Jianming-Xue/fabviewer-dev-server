@@ -14,9 +14,11 @@ import (
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
 	"github.com/stretchr/testify/require"
 
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 	"github.com/fab-viewer/common-lib/common/paging"
 	"github.com/fab-viewer/common-lib/storage/opensearch"
+	"github.com/fab-viewer/common-lib/storage/opensearch/config"
+	"github.com/fab-viewer/common-lib/storage/opensearch/search"
 )
 
 // TestOpenSearchLifecycle 是阶段 5 集成验收线：Open → Index → Search →
@@ -30,7 +32,7 @@ func TestOpenSearchLifecycle(t *testing.T) {
 	}
 	insecure, _ := strconv.ParseBool(os.Getenv("COMMON_LIB_OS_INSECURE"))
 
-	cli, err := opensearch.Open(opensearch.Config{
+	cli, err := opensearch.Open(config.Config{
 		Addrs:    strings.Split(rawAddrs, ","),
 		Username: os.Getenv("COMMON_LIB_OS_USER"),
 		Password: os.Getenv("COMMON_LIB_OS_PASS"),
@@ -62,12 +64,12 @@ func TestOpenSearchLifecycle(t *testing.T) {
 	})
 
 	t.Run("Search", func(t *testing.T) {
-		res, err := opensearch.Search[order](ctx, cli, index,
+		res, err := search.Search[order](ctx, cli, index,
 			map[string]any{"term": map[string]any{"_id": id}},
-			opensearch.WithPaging(paging.Query{PageIndex: 1, PageSize: 10}),
+			search.WithPaging(paging.Query{PageIndex: 1, PageSize: 10}),
 			// 注：+id 不参与排序——源字段 id 是字符串，被 OpenSearch 动态映射为
 			// text 类型（不可排序，需 keyword 映射）；created_at 动态映射为 date 可排序。
-			opensearch.WithSorts("-created_at"),
+			search.WithSorts("-created_at"),
 		)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, res.Total)
@@ -94,7 +96,7 @@ func TestOpenSearchLifecycle(t *testing.T) {
 	})
 
 	t.Run("缺失索引搜索翻译为 NOT_FOUND", func(t *testing.T) {
-		_, err := opensearch.Search[order](ctx, cli, index+"-missing", nil)
-		require.ErrorIs(t, err, errs.ErrNotFound)
+		_, err := search.Search[order](ctx, cli, index+"-missing", nil)
+		require.ErrorIs(t, err, fverr.ErrNotFound)
 	})
 }

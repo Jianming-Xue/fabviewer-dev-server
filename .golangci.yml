@@ -56,14 +56,23 @@ linters:
         cross-layer-zero-deps:
           listMode: strict
           files:
-            - "**/common/errs/**"
+            - "**/common/fverr/**"
             - "**/common/paging/**"
             - "**/common/logx/**"
-            - "**/common/actor/**"
-            - "**/common/tx/**"
+            - "**/common/actortx/**"
+            - "**/common/rctx/**"
           allow:
             - "$gostd"
             - "github.com/stretchr/testify"
+        # i18n 跨层包：语言取自 tx 运行时上下文，除此之外零依赖。
+        i18n-deps-only-tx:
+          listMode: strict
+          files:
+            - "**/common/i18n/**"
+          allow:
+            - "$gostd"
+            - "github.com/stretchr/testify"
+            - "github.com/fab-viewer/common-lib/common/rctx"
         # api 包禁止依赖存储（deny 为前缀匹配，可命中全部子包）
         api-no-storage:
           files:
@@ -108,6 +117,11 @@ linters:
         linters:
           - gosec
           - errcheck
+      # i18n 外部测试包（i18n_test）需要 import 被测包自身，
+      # depguard strict 白名单无法表达自引用，测试文件豁免。
+      - path: common/i18n/.+_test\.go
+        linters:
+          - depguard
       - path: examples/
         linters:
           - unparam

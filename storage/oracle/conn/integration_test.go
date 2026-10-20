@@ -25,7 +25,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/storage/oracle/config"
 )
 
 // oracleGooseStore 是 goose 的 Oracle 方言 Store 全量实现（goose v3 未内置
@@ -147,7 +148,7 @@ func integrationDSN(t *testing.T, dsn string) config.Config {
 	hostPort, service, ok := strings.Cut(addr, "/")
 	require.True(t, ok && hostPort != "" && service != "", "DSN 缺少 /service 段")
 	host, portStr, hasPort := strings.Cut(hostPort, ":")
-	port := DefaultPort
+	port := config.DefaultPort
 	if hasPort {
 		p, err := strconv.Atoi(portStr)
 		require.NoError(t, err, "端口非法")
@@ -254,7 +255,7 @@ func demoTxIntegration(t *testing.T, ctx context.Context, db *DB) {
 	t.Helper()
 	err := db.GORM().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&gadgetIT{ID: 99, Name: "tx-row"}).Error; err != nil {
-			return errs.Wrap(err, errs.CodeDB, "事务内 Create")
+			return fverr.NewError(fverr.CodeDB, "事务内 Create").AttachError(err, nil)
 		}
 		ex, err := FromGorm(tx)
 		if err != nil {
@@ -265,7 +266,7 @@ func demoTxIntegration(t *testing.T, ctx context.Context, db *DB) {
 			return err
 		}
 		if total != 102 { // 1 + 2 + 99，过程与 DML 同事务才可见
-			return errs.Newf(errs.CodeDB, "事务内过程聚合非预期: %d", total)
+			return fverr.NewError(fverr.CodeDB, "事务内过程聚合非预期: {0}", total)
 		}
 		return nil
 	})

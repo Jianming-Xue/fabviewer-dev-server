@@ -9,7 +9,8 @@
 //		                                  // 才记录，status/latency 才是最终值
 //		middleware.ErrorHandler(log),     // c.Next() 返回后统一消费 c.Errors
 //		middleware.Recovery(log),         // 兜住后续中间件与路由的 panic
-//		middleware.RuntimeContext(),      // 解析请求头 txId/txTime/txName/userName
+//		middleware.FillRuntimeContext(), // 解析请求头 txId/txTime/txName/
+//		                                  // userName 与标准头 Accept-Language
 //		                                  // 注入运行时上下文（预写响应头 txId，
 //		                                  // 任何位置的写回都能带上）
 //	)

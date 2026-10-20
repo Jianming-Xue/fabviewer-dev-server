@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 
-	"github.com/fab-viewer/common-lib/common/errs"
+	"github.com/fab-viewer/common-lib/common/fverr"
 )
 
 // Cursor 包装存储过程 OUT 参数返回的 REF CURSOR，读取语义对齐 *sql.Rows
@@ -27,10 +27,10 @@ func (c *Cursor) Next() bool {
 // 未初始化或已耗尽的 Cursor 调用返回错误而非 panic。
 func (c *Cursor) Scan(dest ...any) error {
 	if c == nil || c.rows == nil {
-		return errs.New(errs.CodeValidation, "oracle.Cursor.Scan 游标未初始化")
+		return fverr.NewError(fverr.CodeValidation, "oracle.Cursor.Scan 游标未初始化")
 	}
 	if err := c.rows.Scan(dest...); err != nil {
-		return errs.Wrap(err, errs.CodeDB, "oracle.Cursor.Scan")
+		return fverr.NewError(fverr.CodeDB, "oracle.Cursor.Scan").AttachError(err, nil)
 	}
 	return nil
 }
@@ -38,11 +38,11 @@ func (c *Cursor) Scan(dest ...any) error {
 // Columns 返回当前结果集的列名列表。
 func (c *Cursor) Columns() ([]string, error) {
 	if c == nil || c.rows == nil {
-		return nil, errs.New(errs.CodeValidation, "oracle.Cursor.Columns 游标未初始化")
+		return nil, fverr.NewError(fverr.CodeValidation, "oracle.Cursor.Columns 游标未初始化")
 	}
 	cols, err := c.rows.Columns()
 	if err != nil {
-		return nil, errs.Wrap(err, errs.CodeDB, "oracle.Cursor.Columns")
+		return nil, fverr.NewError(fverr.CodeDB, "oracle.Cursor.Columns").AttachError(err, nil)
 	}
 	return cols, nil
 }
@@ -50,10 +50,10 @@ func (c *Cursor) Columns() ([]string, error) {
 // Err 返回迭代期间（不含 Scan）发生的错误；正常结束返回 nil。
 func (c *Cursor) Err() error {
 	if c == nil || c.rows == nil {
-		return errs.New(errs.CodeValidation, "oracle.Cursor.Err 游标未初始化")
+		return fverr.NewError(fverr.CodeValidation, "oracle.Cursor.Err 游标未初始化")
 	}
 	if err := c.rows.Err(); err != nil {
-		return errs.Wrap(err, errs.CodeDB, "oracle.Cursor.Err")
+		return fverr.NewError(fverr.CodeDB, "oracle.Cursor.Err").AttachError(err, nil)
 	}
 	return nil
 }
@@ -64,7 +64,7 @@ func (c *Cursor) Close() error {
 		return nil
 	}
 	if err := c.rows.Close(); err != nil {
-		return errs.Wrap(err, errs.CodeDB, "oracle.Cursor.Close")
+		return fverr.NewError(fverr.CodeDB, "oracle.Cursor.Close").AttachError(err, nil)
 	}
 	return nil
 }
@@ -89,11 +89,11 @@ type outCursor struct {
 func OutCursor(dest *Cursor) (out any) {
 	defer func() {
 		if r := recover(); r != nil {
-			out = &outCursor{err: errs.Newf(errs.CodeValidation, "oracle.OutCursor 入参非法引发 panic: %v", r)}
+			out = &outCursor{err: fverr.NewError(fverr.CodeValidation, "oracle.OutCursor 入参非法引发 panic: {0}", r)}
 		}
 	}()
 	if dest == nil {
-		return &outCursor{err: errs.Newf(errs.CodeValidation, "oracle.OutCursor dest 不能为 nil")}
+		return &outCursor{err: fverr.NewError(fverr.CodeValidation, "oracle.OutCursor dest 不能为 nil")}
 	}
 	return &outCursor{dest: dest}
 }
