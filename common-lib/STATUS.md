@@ -40,12 +40,12 @@ common-lib/
 
 ## Git 状态（接手前必读）
 
-- 最后提交：`1be52cf`（docs: 对象层约定），最后 tag：`v0.5.1`
-- **工作区含全部四轮变更，均未提交**：约 34 处修改、41 处重命名/移动、
-  13 个新文件（运行时上下文包（现 common/rctx）、各子包 doc.go 与部分测试）
-- 另有一处先前遗留的未暂存删除：`.claude/settings.local.json`
-- 建议提交拆分：按上表四轮各一个 commit（CHANGELOG 的 Unreleased 段落
-  已按轮次分条记录，可直接对应）
+- **2026-10-20 仓库重组**：git 根从本目录上移至上级 `services/`，本库成为
+  其 `common-lib/` 子目录（历史经 rename 完整保留），与业务服务
+  security-management 并列；仓库级交接见 `../HANDOVER.md`
+- 上表 1–7 轮变更均已提交推送；最后 tag：`v0.5.1`（**Unreleased 已积累
+  大量 breaking，接入业务前建议打 v0.6.0**）
+- 快照日期更新为 2026-10-20；本文件"一句话状态"与实际同步
 
 ## 待定决策
 
