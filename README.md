@@ -24,7 +24,8 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 
 | common-lib 包 | 接口访问层 | 服务层 | 业务聚合层 | 存储层 | 对象层 | main 组装根 |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `common/fverr` / `common/paging` / `common/logx` / `common/actortx`（跨层，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `common/fverr` / `common/paging` / `common/actortx` / `common/rctx`（跨层，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `common/logx`（zap 引擎完整日志工具，见下节） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/rctx`、`common/i18n`（跨层运行时上下文与多语言表，仅依赖标准库与 `common/rctx`） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `api`、`api/middleware` | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/clickhouse`（`config`/`batch` 子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
@@ -282,6 +283,46 @@ check-layers:
 - **访问日志**：自动携带 `tx_id`/`tx_name`/`user`
 - 定时任务无请求头，任务入口自注入：
   `ctx = rctx.SetRuntimeContext(ctx, rctx.RuntimeContext{ID: snowflake.Next(), Name: "daily-settle"})`
+
+### 日志（common/logx：zap 引擎完整工具）
+
+引擎为 **zap**（业界事实标准），出口可组合（至少一个）——标准输出 /
+**文件**（编号滚动：`log、log.1、log.2 ... log.N` 按大小触发、保留 N 份）/
+**OpenSearch 直写**（异步批量，`storage/opensearch/logsink`，Bulk API 写按日
+索引 `logs-yyyy.MM.dd`）。**每个出口可注入各自的自定义格式**（文件是业务
+字符串格式、远程是另一种 JSON 这类组合，经 `Encoder` + `logx.LineEncoder`
+适配业务格式函数）。
+
+```go
+// A 服务：文件=业务字符串格式（100MB 滚动留 200 份）+ OpenSearch=业务 JSON
+log, closeLog, err := logx.New(logx.Config{
+    File: &logx.FileConfig{
+        Path:       "systemlogs/svcA.log", // 目录自动创建，可配置
+        MaxSizeMB:  100,
+        MaxBackups: 200,                   // log.1 ... log.200
+        Encoder: logx.LineEncoder(func(r logx.Rec) string { // 业务自定义
+            return fmt.Sprintf("%s [%s] %s %v", r.Time.Format("2006-01-02 15:04:05"), r.Level, r.Msg, r.KV)
+        }),
+    },
+    Remote:       logsink.New(osCli, "logs"),
+    RemoteEncoder: logx.LineEncoder(func(r logx.Rec) string { // 业务自定义 JSON
+        b, _ := json.Marshal(map[string]any{"lvl": r.Level, "msg": r.Msg, "kv": r.KV})
+        return string(b)
+    }),
+})
+defer closeLog()
+
+// B 服务：仅文件（默认 JSON 格式）
+log, closeLog, err := logx.New(logx.Config{
+    File: &logx.FileConfig{Path: "systemlogs/svcB.log", MaxSizeMB: 100},
+})
+```
+
+- 远程出口**异步批量**（默认 256 行/批或 5s 刷出）：缓冲满即丢弃计数，
+  **绝不反压业务**；ES 不可用时丢日志但不影响服务
+- Logger 五方法接口仍是库内组件（中间件/存储）与业务日志的统一接缝；
+  已有自有日志设施的服务实现接口即可接入（`NewSlog` 适配标准库 slog）
+- 依赖：zap（depguard 已固化白名单；滚动为自研编号方案，无额外依赖）
 
 ### 统一错误与国际化（common/fverr + common/i18n + cmd/i18nerr）
 

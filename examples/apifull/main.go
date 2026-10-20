@@ -23,7 +23,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log/slog"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -85,7 +85,25 @@ func (r *userRepo) get(ctx context.Context, id int64) (user, error) {
 }
 
 func main() {
-	log := logx.NewSlog(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	// 完整日志工具：stdout（默认 JSON）+ 文件（编号滚动 apifull.log、
+	// apifull.log.1 ... 留 3 份，业务自定义字符串格式——"服务自己的格式"
+	// 经 logx.LineEncoder 注入）；需要 OpenSearch 直写时再加 Remote 出口
+	// （storage/opensearch/logsink，经 Bulk API 写按日索引，可另配格式）
+	log, closeLog, err := logx.New(logx.Config{
+		Stdout: true,
+		File: &logx.FileConfig{
+			Path: "apifull.log", MaxSizeMB: 10, MaxBackups: 3,
+			Encoder: logx.LineEncoder(func(r logx.Rec) string {
+				return fmt.Sprintf("%s [%s] %s %v",
+					r.Time.Format("2006-01-02 15:04:05"), r.Level, r.Msg, r.KV)
+			}),
+		},
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer closeLog() // 停机时排空缓冲并关闭文件
 	logx.SetDefault(log)
 
 	repo := &userRepo{data: seedUsers(57)}
@@ -170,6 +188,7 @@ func main() {
 		log.Error("graceful shutdown failed", "err", err)
 	}
 	log.Info("bye")
+	closeLog()
 }
 
 // deleteUser 演示删除确认：确认 Message 必须带上被删对象的 Name（用户名/

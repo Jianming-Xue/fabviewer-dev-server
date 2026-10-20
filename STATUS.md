@@ -23,7 +23,8 @@
 
 ```
 common-lib/
-├── common/          fverr / paging / logx / actortx / rctx（跨层零依赖会合点）
+├── common/          fverr / paging / actortx / rctx（跨层零依赖会合点）
+│                    logx（zap 引擎完整日志工具：编号滚动/每出口自定义格式，仅白名单依赖 zap）
 │                    i18n（多语言表能力，仅依赖 common/rctx）
 ├── cmd/i18nerr/     错误变量集合生成器（messages_<语言>.go → vars_gen.go）
 ├── api/             统一响应（apiresponse）、PageQuery、错误码映射

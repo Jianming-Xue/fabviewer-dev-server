@@ -25,6 +25,16 @@
 
 ### Added
 
+- 日志升级为完整工具：`common/logx` 引擎改为 **zap**（业界事实标准），
+  `logx.New(Config)` 出口可组合——标准输出 / 文件（**自研编号滚动**：
+  log、log.1、log.2 ... log.N 按大小触发，保留 N 份）/ 远程批量出口
+  （异步，默认 256 行/批或 5s 刷出，缓冲满丢弃计数绝不反压业务）；**每个
+  出口可注入自定义编码器**（`Encoder` 字段 + `logx.LineEncoder` 适配业务
+  格式函数，文件字符串格式与远程 JSON 可各配各的）；新增
+  `storage/opensearch/logsink` 实现 logx.Sink（Bulk API 直写按日索引
+  `logs-yyyy.MM.dd`）。Logger 五方法接口保留为库内组件与业务的接缝
+  （`NewSlog` 适配 slog 兼容旧接入）；新增依赖 `go.uber.org/zap`
+  （depguard 白名单固化）
 - 统一业务错误重构为 `common/fverr.FvError`（四字段 Code/Message/Err/Details，
   出口只输出 Message、其余全进日志）。API 收敛为唯一构造
   `NewError(code, message, args...)` + 链式 `InsertArgs`（按序替换 `{0}` `{1}`

@@ -12,6 +12,7 @@ require (
 	github.com/pressly/goose/v3 v3.29.0
 	github.com/stretchr/testify v1.12.1
 	go.uber.org/mock v0.6.0
+	go.uber.org/zap v1.28.0
 	gorm.io/gorm v1.31.2
 )
 

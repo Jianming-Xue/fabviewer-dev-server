@@ -58,12 +58,21 @@ linters:
           files:
             - "**/common/fverr/**"
             - "**/common/paging/**"
-            - "**/common/logx/**"
             - "**/common/actortx/**"
             - "**/common/rctx/**"
           allow:
             - "$gostd"
             - "github.com/stretchr/testify"
+        # logx 完整日志工具：zap 引擎 + 自研编号滚动（2026-10-20 用户拍板：
+        # 日志提供完整方案而非仅接口；滚动命名 log、log.1 ... log.N）。
+        logx-zap-engine:
+          listMode: strict
+          files:
+            - "**/common/logx/**"
+          allow:
+            - "$gostd"
+            - "github.com/stretchr/testify"
+            - "go.uber.org/zap"
         # i18n 跨层包：语言取自 tx 运行时上下文，除此之外零依赖。
         i18n-deps-only-tx:
           listMode: strict
@@ -117,9 +126,9 @@ linters:
         linters:
           - gosec
           - errcheck
-      # i18n 外部测试包（i18n_test）需要 import 被测包自身，
-      # depguard strict 白名单无法表达自引用，测试文件豁免。
-      - path: common/i18n/.+_test\.go
+      # 外部测试包（xxx_test）需要 import 被测包自身，depguard strict
+      # 白名单无法表达自引用，测试文件豁免。
+      - path: common/(i18n|logx)/.+_test\.go
         linters:
           - depguard
       - path: examples/

@@ -35,7 +35,7 @@ module 名为占位、业务方经 `replace` 本地引用）。被两类业务�
 ```
 common/fverr    FvError（唯一构造 NewError(code,msg,args...)，链式 InsertArgs/AttachError，IsError/From）
 common/paging    Query{PageIndex,PageSize}、Pageable[T]（出参 pageable）
-common/logx      Logger 五方法接口、slog 适配、全局默认出口
+common/logx      zap 引擎完整工具（stdout/文件编号滚动/远程批量出口，每出口可注入自定义格式）+ Logger 接口接缝
 common/actortx   操作者 context 记录与传递（审计字段的来源；SetActorContext/GetActorContext）
 common/rctx      RuntimeContext{ID,Time,Name,User,Lang} 运行时上下文（请求头四字段 + Accept-Language）
 common/i18n      Bundles 多语言消息集 + Accept-Language 解析（只提供能力，译文业务自注册；仅依赖 tx）
@@ -46,7 +46,7 @@ storage/oracle/config      Config/WithDefaults/Validate/BuildDSN
 storage/oracle/base        BasePO 审计基类（GORM 钩子自动填 CreatedBy 等）
 storage/oracle/repository  Repository[T]（雪花 ID + 审计落库）
 storage/clickhouse(+config/batch)   Open/Client/QuerySlice；Batch[T] 批量写
-storage/opensearch(+config/search)  Open/Client/Index/Get/Delete；Search[T] 泛型搜索
+storage/opensearch(+config/search/logsink)  Open/Client/Index/Get/Delete；Search[T]；logsink 日志直写
 storage/snowflake  点分隔雪花 ID（"<Unix毫秒>.<节点>.<序列>"）
 storage/pool.go    PoolConfig 连接池配置
 cmd/i18nerr        模块错误字典生成器（messages_<语言>.go → errors_gen.go）
