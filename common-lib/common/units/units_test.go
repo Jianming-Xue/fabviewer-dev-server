@@ -83,3 +83,13 @@ func TestParseEpochMillis(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestBoolToInt(t *testing.T) {
+	assert.Equal(t, 1, units.BoolToInt(true))
+	assert.Equal(t, 0, units.BoolToInt(false))
+}
+
+func TestFormatDateTime(t *testing.T) {
+	got := units.FormatDateTime(time.Date(2026, 10, 21, 10, 0, 0, 0, time.Local))
+	assert.Equal(t, "2026-10-21 10:00:00", got)
+}

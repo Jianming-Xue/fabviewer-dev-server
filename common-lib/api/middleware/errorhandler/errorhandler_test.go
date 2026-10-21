@@ -22,11 +22,11 @@ import (
 
 // errBody 是错误响应的解码目标（response.Response）。
 type errBody struct {
-	Code     int    `json:"code"`
-	Success  bool   `json:"success"`
-	ErrMsg   string `json:"errMsg"`
-	Contents any    `json:"contents"`
-	TxID     string `json:"txId"`
+	Code    int    `json:"code"`
+	Success bool   `json:"success"`
+	ErrMsg  string `json:"errMsg"`
+	Data    any    `json:"data"`
+	TxID    string `json:"txId"`
 }
 
 func TestErrorHandlerCodeMap(t *testing.T) {
@@ -68,7 +68,7 @@ func TestErrorHandlerCodeMap(t *testing.T) {
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
 			assert.Equal(t, tt.wantStatus, b.Code, "code 即 HTTP 状态码")
 			assert.False(t, b.Success)
-			assert.Nil(t, b.Contents)
+			assert.Nil(t, b.Data)
 		})
 	}
 }

@@ -11,6 +11,20 @@ import (
 	"github.com/fab-viewer/common-lib/api/internal/testutil"
 )
 
+func TestCaptureLog(t *testing.T) {
+	l := testutil.CaptureLog(t)
+	l.Debug("d")
+	l.Warn("w", "k", "v")
+	records := l.Snapshot()
+	require.Len(t, records, 2)
+	assert.Equal(t, "debug", records[0].Level)
+	assert.Equal(t, "warn", records[1].Level)
+	v, ok := testutil.KVGet(records[1].KV, "k")
+	require.True(t, ok)
+	assert.Equal(t, "v", v)
+	// 恢复由 t.Cleanup 完成（测试结束回到 Nop）
+}
+
 func TestCaptureLogger(t *testing.T) {
 	l := &testutil.CaptureLogger{}
 	l.Info("hello", "k", "v")

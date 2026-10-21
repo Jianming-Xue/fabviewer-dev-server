@@ -4,9 +4,9 @@ package app
 
 import (
 	"context"
-	"time"
 
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/units"
 	"github.com/fab-viewer/common-lib/common/paging"
 	"github.com/fab-viewer/security-management/domain"
 	"github.com/fab-viewer/security-management/services"
@@ -37,7 +37,7 @@ func (s *UserService) Create(ctx context.Context, cmd services.CreateUserCmd) (s
 		Username: cmd.Username,
 		Name:     cmd.Name,
 		Email:    cmd.Email,
-		Enabled:  cmd.Enabled,
+		Enabled:  units.Bool(cmd.Enabled),
 	}
 	if err := s.users.Create(ctx, u); err != nil {
 		return services.UserDTO{}, wrapStorage(ctx, "Create", err)
@@ -109,9 +109,9 @@ func toDTO(u *domain.User) services.UserDTO {
 		Username:  u.Username,
 		Name:      u.Name,
 		Email:     u.Email,
-		Enabled:   u.Enabled,
-		CreatedAt: u.CreatedAt.Format(time.DateTime),
-		UpdatedAt: u.UpdatedAt.Format(time.DateTime),
+		Enabled:   units.BoolToInt(u.Enabled),
+		CreatedAt: units.FormatDateTime(u.CreatedAt),
+		UpdatedAt: units.FormatDateTime(u.UpdatedAt),
 	}
 }
 

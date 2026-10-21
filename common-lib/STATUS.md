@@ -6,10 +6,10 @@
 
 ## 一句话状态
 
-common-lib 五项核心能力改造、API 层分包、请求参数转换均已完成并推送；
-cmd/server 统一装配已落地（中间件零持有 + server.NewEngine/Init/
-NewServer/Run + wire ProviderSet，security-management 已迁移 wire 形态）；
-存储组件 Init 形态待设计；snowflake 仍是 WIP。
+common-lib 五项核心能力改造、API 层分包、请求参数转换、cmd/server 统一
+装配均已完成并推送；响应契约已重塑为 ApiResponse（OK/Fail 两出口，data
+由 handler 给定；Fail 默认 code 200 可改）；VO→DTO 出参转换（time→字符串、
+bool→int）已落地；存储组件 Init 形态待设计；snowflake 仍是 WIP。
 
 ## 已完成（2026-10-21 会话，已提交推送）
 
@@ -19,6 +19,7 @@ NewServer/Run + wire ProviderSet，security-management 已迁移 wire 形态）�
 | 7. logx 重构 | Init(m) 唯一入口（配置结构私有、等级链 outlet→global→info 静默兜底、format json 默认/console）、console/file 双出口、滚动换 lumberjack（maxAge/compress/localTime）、包级 Debug/Info/Warn/Error（独立 log.go，caller 指向业务行）、SetLogger（原 SetDefault）、ErrNoLogComponent；**删除**：远程出口（Sink/异步缓冲/logsink 包）、自定义格式（LineEncoder/Formatter/Rec）、自研编号滚动（推翻 2026-10-20 拍板）、NewSlog（slog 适配） | 覆盖率 100% + lint 0 + security-management 真机实测（双格式日志、caller 指向 main.go 业务行） |
 | 8. 统一错误更名 | fverr → bizerror（FvError → BizError，仅更名）；i18nerr 生成器随迁，examples 双模块 + security-management 的 errors_gen 重生成零漂移 | 全库 build/vet/test |
 | 9. actortx 并入 rctx | actortx 包删除（操作者即 RuntimeContext.User，双通道合一）；RuntimeContext 字段私有化（WithXxx 链式赋值值语义 / FromXxx 取值）；审计钩子/accesslog/语法糖全量随迁 | 全库 race 测试 |
+| 14. 响应契约重塑 ApiResponse | Response→ApiResponse、Contents→Data；出口收敛 OK/Fail（OK：默认 200/errMsg 可选；Fail：默认 **200** 可 WithCode、success 恒 false、errMsg 必填、data 恒 nil）；删 Created/NoContent/OKPage/NewResponse 与 errresp.Fail（errresp 收编纯码表）；新增 response.Wrap[DTO]（VO→DTO：time→"yyyy-MM-dd HH:mm:ss"、bool→int 1/0、整数→字符串，嵌套/slice/map/指针递归；mapstructure struct 输入会拆 time.Time，Wrap 先行浅递归展开规避）+ units.FormatDateTime/BoolToInt；SM 随迁（Enabled 出入参均 int、handler 统一 OK、204→200+data null）| api 覆盖率 100%（门槛 99%）+ lint 0 + race 全绿 + SM 端到端实测（创建 enabled:1/时间字符串/中文 404/删除确认 409/删除 200 data:null）|
 | 13. cmd/server 统一装配 | 中间件零持有日志（三中间件去 log 参数，经 logx 全局出口；testutil.CaptureLog）；新增 cmd/server 包：NewEngine（四中间件固定顺序+/healthz，模块码表唯一必传差异）、Init（server 段：addr/mode/四超时/shutdownTimeout，段缺失全默认，gin.SetMode 副作用）、NewServer+Run（cleanup 优雅停机）、ProviderSet（wire 方案 A，engine 归业务）；common/config 增 Bind（保留已有值/出现的键覆盖）+ 时长钩子（GetSection 同步挂）；security-management 迁 wire（wire.go/providers.go/瘦身 main，SM_ADDR→server 段+security.server.addr 覆盖）；apifull 改手工全家桶示例 | 双模块 build/vet/test(race) 全绿 + lint 0（除 snowflake WIP）+ SM 端到端冒烟（healthz/创建/列表/环境变量覆盖 :8099/优雅停机链）+ apifull 冒烟（中文 404/停机日志）|
 | 12. 请求参数转换 | 新增 common/units（Bool：int 1→true 其余 false；ParseDate/ParseDateTime：8/14 位日期字符串→本地时间；ParseEpochMillis：13 位毫秒）；api/request 增 Wrap[VO]（DTO→VO 字段名对齐+弱类型，int→bool 按 units.Bool 钩子）与 Require（必填去空白→VALIDATION）；runtimecontext txTime 解析改用 units（时区 UTC→本地）；depguard 白名单/测试豁免随迁 | units 100%、api 聚合 99.1%、lint 0（除 snowflake WIP）、race 全绿 |
 | 11. API 层按功能分包 | `api` 根包拆为 reqctx（gin↔rctx 绑定+WithActor）/ request（PageQuery）/ response（apiresponse 写回）/ errresp（Fail+码表）；`api/middleware` 按处理流程点拆 accesslog/errorhandler/recovery/runtimecontext 四子包（根包留注册顺序契约+全栈测试）；新增 api/internal/testutil 共享测试脚手架；accesslog.AccessLogOption→Option；examples/apifull 与 security-management 随迁 | build/vet/test(race) 全绿 + lint 除 snowflake 3 条 WIP 外零告警 + apifull 端到端冒烟（分页/404/txId）|

@@ -64,9 +64,11 @@ api/reqctx        gin ↔ rctx 绑定：五请求头常量、CtxRuntimeContext k
                   RuntimeContextOf/TxIDOf/LangOf 取值语法糖、WithActor
 api/request       请求参数：PageQuery、Require（必填校验）、Wrap[VO]
                   （DTO→service VO：字段名对齐 + 弱类型转换，布尔按 units.Bool）
-api/response      统一响应体 apiresponse：Response 五字段恒序列化 +
-                  OK/Created/NoContent/OKPage/Write 写回
-api/errresp       错误响应：Fail、DefaultStatusMap/StatusFor（Code → HTTP 状态码）
+api/response      统一响应体 ApiResponse（code/success/errMsg/data/txId）：
+                  OK/Fail 出口 + Option（WithCode/WithErrMsg）+ Wrap[DTO]
+                  （VO→DTO：time→字符串、bool→int）；Write 供库内组件写回
+api/errresp       错误码 → HTTP 状态码映射：DefaultStatusMap/StatusFor
+                  （供 errorhandler 取状态码；写回用 response.Fail）
 api/middleware    按处理流程点分包（根包仅承载注册顺序契约与全栈测试）：
                   accesslog → errorhandler → recovery → runtimecontext
                   （顺序固定；三日志中间件零持有日志对象，经 logx 全局出口）
@@ -90,16 +92,23 @@ logx 依赖 config（段读取）；batch/search 依赖各自根包；所有存�
 
 ## 4. 核心对外契约（wire 格式）
 
-### 4.1 统一响应 apiresponse（五字段恒序列化，成功/失败同构）
+### 4.1 统一响应 ApiResponse（五字段恒序列化，成功/失败同构）
 
 ```json
-{"code":200,"success":true,"errMsg":"","contents":{...},"txId":"abc"}
-{"code":404,"success":false,"errMsg":"user 999 not found","contents":null,"txId":"abc"}
+{"code":200,"success":true,"errMsg":"","data":{...},"txId":"abc"}
+{"code":200,"success":false,"errMsg":"user 999 not found","data":null,"txId":"abc"}
 ```
 
-- `code` = HTTP 状态码（数字），由 `bizerror.Code → DefaultStatusMap` 映射产生
-- 字符串错误码与 Details **不出参**，随 `business error` 日志留痕
-- 业务错误统一走 `c.Error(err)` → ErrorHandler，handler 不自写错误响应
+- `code` = HTTP 状态码（数字）；txId 取 RuntimeContext 记录的事务 ID
+- 出口两个：`OK(c, data, opts...)`（code 默认 200、errMsg 可选经 WithErrMsg）；
+  `Fail(c, errMsg, opts...)`（code 默认 **200** 可 WithCode 修改、success 恒
+  false、errMsg 必填、data 恒 nil）；**data 由 handler 指定**（single 或集合，
+  分页 pageable 整体作为 data）
+- VO → DTO 出参转换：time → "yyyy-MM-dd HH:mm:ss" 字符串、bool → int 1/0
+  （`response.Wrap` 或 units 原语）
+- 常规业务错误统一走 `c.Error(err)` → ErrorHandler（按 DefaultStatusMap 映射
+  code），handler 不自写错误响应；字符串错误码与 Details 不出参，随
+  `business error` 日志留痕
 
 ### 4.2 分页（2026-10-21 拍板新契约）
 

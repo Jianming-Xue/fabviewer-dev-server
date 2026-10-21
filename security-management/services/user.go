@@ -15,7 +15,7 @@ type UserDTO struct {
 	Username  string `json:"username"`
 	Name      string `json:"name"`
 	Email     string `json:"email"`
-	Enabled   bool   `json:"enabled"`
+	Enabled   int    `json:"enabled"`
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
 }
@@ -25,7 +25,7 @@ type CreateUserCmd struct {
 	Username string `json:"username" binding:"required"`
 	Name     string `json:"name" binding:"required"`
 	Email    string `json:"email"`
-	Enabled  bool   `json:"enabled"`
+	Enabled  int    `json:"enabled"`
 }
 
 // UserService 是用户模块对外能力。Delete 的确认语义：confirmed=false 时

@@ -6,6 +6,26 @@
 
 ## [Unreleased]
 
+### Changed（Breaking：统一响应体重塑为 ApiResponse）
+
+- `response.Response` → `response.ApiResponse`，字段 `Contents` → **`Data`**
+  （json tag "contents" → "data"）；data 由业务 handler 指定：single 对象
+  或 multi 对象集合（分页 pageable 整体作为 data）
+- 出口收敛为两个：`OK(c, data, opts...)`——code 默认 200、success=true、
+  errMsg 默认空串（可 WithErrMsg）；`Fail(c, errMsg, opts...)`——**code 默认
+  200**（可 WithCode 修改，HTTP 跟随）、success 恒 false、errMsg 必填（空串
+  兜底 "internal error"）、data 恒 nil。**删除** Created/NoContent/OKPage/
+  NewResponse（创建场景用 OK；204 场景改为 OK(c, nil)；分页 OK(c, pageable)）
+- `errresp.Fail` 删除（被 response.Fail 取代），errresp 包收编为纯
+  errorhandler 用的错误码 → HTTP 状态码映射；TxID 统一取 RuntimeContext
+  记录的事务 ID
+- 新增 VO → DTO 出参转换：`response.Wrap[DTO](vo)`（字段名 tag 优先忽略
+  大小写，time → "yyyy-MM-dd HH:mm:ss" 字符串、bool → int 1/0、整数 →
+  字符串；嵌套 struct/slice/map/指针递归；其余类型不匹配报错）；
+  `common/units` 增 `FormatDateTime`（零值转空串）与 `BoolToInt`
+- security-management 随迁：UserDTO.Enabled bool→int（入参 CreateUserCmd
+  同步 int，app 层 units.Bool 转换）、handler 统一 OK、删除 204→200+data null
+
 ### Added（cmd/server 统一装配包，2026-10-21 拍板方案 A 落地）
 
 - 新增 `cmd/server`（业务组装根的全家桶入口，import 别名 server）：

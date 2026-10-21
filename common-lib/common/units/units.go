@@ -50,3 +50,18 @@ func ParseEpochMillis(s string) (time.Time, error) {
 	}
 	return time.UnixMilli(ms), nil
 }
+
+// BoolToInt 是 Bool 的反向转换：布尔输出为数字（true → 1，false → 0），
+// 用于 VO → DTO 出参组装。
+func BoolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// FormatDateTime 把时间格式化为出参展示格式 "yyyy-MM-dd HH:mm:ss"
+// （time.DateTime）；入参方向解析见 ParseDate/ParseDateTime。
+func FormatDateTime(t time.Time) string {
+	return t.Format(time.DateTime)
+}

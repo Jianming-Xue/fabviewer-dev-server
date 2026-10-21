@@ -1,14 +1,8 @@
 package errresp
 
 import (
-	"context"
-	"database/sql"
-	"errors"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
-
-	"github.com/fab-viewer/common-lib/api/response"
 	"github.com/fab-viewer/common-lib/common/bizerror"
 )
 
@@ -37,32 +31,4 @@ func StatusFor(code bizerror.Code) int {
 		return s
 	}
 	return http.StatusInternalServerError
-}
-
-// Fail 写回失败响应，与 errorhandler.ErrorHandler 使用同一套默认映射：
-// *bizerror.BizError 按码表映射；sql.ErrNoRows → 404；context.Canceled → 499；
-// 其余 → 500 且根因不进响应。code 即映射出的 HTTP 状态码。
-// 注意 gorm.ErrRecordNotFound 的翻译只在 errorhandler.ErrorHandler 中内置
-// （避免本包引入 GORM 依赖）。
-func Fail(c *gin.Context, err error) {
-	if c.Writer.Written() {
-		return
-	}
-	var e *bizerror.BizError
-	if errors.As(err, &e) {
-		r := response.NewResponse(c, StatusFor(e.Code), e.Message)
-		response.Write(c, r.Code, &r)
-		return
-	}
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		r := response.NewResponse(c, http.StatusNotFound, "resource not found")
-		response.Write(c, http.StatusNotFound, &r)
-	case errors.Is(err, context.Canceled):
-		r := response.NewResponse(c, StatusClientClosedRequest, "client canceled request")
-		response.Write(c, StatusClientClosedRequest, &r)
-	default:
-		r := response.NewResponse(c, http.StatusInternalServerError, "internal error")
-		response.Write(c, http.StatusInternalServerError, &r)
-	}
 }

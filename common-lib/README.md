@@ -249,29 +249,48 @@ check-layers:
 	       END {exit f}'
 ```
 
-## 统一响应体契约（apiresponse）
+## 统一响应体契约（ApiResponse）
 
-成功/失败同构（`response.Response`，五字段恒序列化）：**code 即 HTTP 状态码（数字）**，
-**txId 取自请求头 `txId`**（未携带时由 `runtimecontext.FillRuntimeContext` 生成兜底，透传优先）。
+成功/失败同构（`response.ApiResponse`，五字段恒序列化）：**code 即 HTTP
+状态码（数字）**，**txId 取自 RuntimeContext 记录的事务 ID**（请求头 txId
+透传优先，未携带时由 `runtimecontext.FillRuntimeContext` 生成兜底）。
+**data 由业务 handler 指定**：single 对象或 multi 对象集合（分页 pageable
+整体作为 data）。
 
 ```json
 {"code":200,"success":true,"errMsg":"",
- "contents":{"pageIndex":2,"pageSize":10,"totalSize":57,"totalPage":6,"data":[...]},
+ "data":{"pageIndex":2,"pageSize":10,"totalSize":57,"totalPage":6,"data":[...]},
  "txId":"0c8f..."}
 ```
 
 ```json
-{"code":400,"success":false,"errMsg":"参数 email 格式不正确","contents":null,"txId":"0c8f..."}
+{"code":200,"success":false,"errMsg":"参数 email 格式不正确","data":null,"txId":"0c8f..."}
 ```
 
+- 出口只有两个：`response.OK(c, data, opts...)`——code 默认 **200**、
+  success=true、errMsg 默认空串（可 `WithErrMsg` 补充提示）；
+  `response.Fail(c, errMsg, opts...)`——success 恒 false、**data 恒 nil**、
+  errMsg 必填（空串兜底 "internal error"）、code 默认 **200** 可
+  `WithCode` 修改（HTTP 状态码跟随）。常规业务错误仍走 `c.Error(err)` 交
+  errorhandler 按码表映射（如上例 404/409 场景）
 - 分页请求参数为 `pageIndex`/`pageSize`（`request.PageQuery` 解析为
   `paging.PageRequest`；非法回退默认值 **1/10**，pageSize 上限
   `MaxPageSize=100`）；分页出参 **pageable**（`paging.Pageable`：
-  pageIndex/pageSize/totalSize/**totalPage**/data）置于 `contents`，
+  pageIndex/pageSize/totalSize/**totalPage**/data）整体作为 `data`，
   totalPage 为 totalSize/pageSize 向上取整（不整除进一、整除不加，
   totalSize=0 为 0）。
 - 字符串业务错误码（`bizerror.Code`）与明细（`Details`）不出参：错误码只用于内部映射
   与日志，明细随 `business error` 日志留痕（`ErrorHandler`）。
+
+### 出参转换（VO → DTO，common/units + response.Wrap）
+
+- time.Time → **"yyyy-MM-dd HH:mm:ss"** 字符串（`units.FormatDateTime`，
+  零值转空串）；bool → **int**（`units.BoolToInt`：true→1 / false→0）；
+  整数 → 字符串（如雪花 ID 字段）
+- `response.Wrap[DTO](vo)`：字段名一致（mapstructure/json tag 优先、忽略
+  大小写）自动拷贝 + 上述 wire 转换（嵌套 struct/slice/map/指针递归）；
+  其余类型不匹配报错（不做弱转换）。服务层自行组装 DTO 的项目（如
+  security-management 的 app 层）只用 units 原语即可
 
 ### 请求输入转换约定（common/units + api/request）
 

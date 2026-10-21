@@ -34,7 +34,7 @@ type respBody struct {
 	Code     int             `json:"code"`
 	Success  bool            `json:"success"`
 	ErrMsg   string          `json:"errMsg"`
-	Contents json.RawMessage `json:"contents"`
+	Data     json.RawMessage `json:"data"`
 	TxID     string          `json:"txId"`
 }
 
@@ -54,13 +54,13 @@ func TestUserCRUDFlow(t *testing.T) {
 
 	t.Run("创建并回读", func(t *testing.T) {
 		w := doJSON(t, r, http.MethodPost, "/api/users",
-			`{"username":"zhangsan","name":"张三","email":"z@x.com","enabled":true}`, nil)
-		require.Equal(t, http.StatusCreated, w.Code)
+			`{"username":"zhangsan","name":"张三","email":"z@x.com","enabled":1}`, nil)
+		require.Equal(t, http.StatusOK, w.Code)
 
 		var b respBody
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
 		var dto services.UserDTO
-		require.NoError(t, json.Unmarshal(b.Contents, &dto))
+		require.NoError(t, json.Unmarshal(b.Data, &dto))
 		assert.NotEmpty(t, dto.ID, "雪花 ID 已生成")
 		assert.Equal(t, "张三", dto.Name)
 
@@ -76,11 +76,11 @@ func TestUserCRUDFlow(t *testing.T) {
 	t.Run("审计字段取请求头 userName", func(t *testing.T) {
 		w := doJSON(t, r, http.MethodPost, "/api/users",
 			`{"username":"lisi","name":"李四"}`, map[string]string{"userName": "ops-admin"})
-		require.Equal(t, http.StatusCreated, w.Code)
+		require.Equal(t, http.StatusOK, w.Code)
 		var b respBody
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
 		var dto services.UserDTO
-		require.NoError(t, json.Unmarshal(b.Contents, &dto))
+		require.NoError(t, json.Unmarshal(b.Data, &dto))
 		assert.Equal(t, "lisi", dto.Username)
 	})
 
@@ -89,7 +89,7 @@ func TestUserCRUDFlow(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Code)
 		var b respBody
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
-		assert.Contains(t, string(b.Contents), `"totalSize":2`)
+		assert.Contains(t, string(b.Data), `"totalSize":2`)
 	})
 
 	t.Run("未找到按请求语言", func(t *testing.T) {
@@ -110,11 +110,11 @@ func TestDeleteConfirmation(t *testing.T) {
 	r := newTestServer()
 	w := doJSON(t, r, http.MethodPost, "/api/users",
 		`{"username":"wangwu","name":"王五"}`, nil)
-	require.Equal(t, http.StatusCreated, w.Code)
+	require.Equal(t, http.StatusOK, w.Code)
 	var b respBody
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
 	var dto services.UserDTO
-	require.NoError(t, json.Unmarshal(b.Contents, &dto))
+	require.NoError(t, json.Unmarshal(b.Data, &dto))
 
 	t.Run("未确认：消息带姓名", func(t *testing.T) {
 		w := doJSON(t, r, http.MethodDelete, "/api/users/"+dto.ID, "",
@@ -131,7 +131,7 @@ func TestDeleteConfirmation(t *testing.T) {
 
 	t.Run("确认后真正删除", func(t *testing.T) {
 		w := doJSON(t, r, http.MethodDelete, "/api/users/"+dto.ID+"?confirm=true", "", nil)
-		require.Equal(t, http.StatusNoContent, w.Code)
+		require.Equal(t, http.StatusOK, w.Code)
 
 		w = doJSON(t, r, http.MethodGet, "/api/users/"+dto.ID, "", nil)
 		var b respBody

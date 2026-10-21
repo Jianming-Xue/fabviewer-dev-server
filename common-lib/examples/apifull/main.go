@@ -125,7 +125,7 @@ func main() {
 			_ = c.Error(err)
 			return
 		}
-		response.OKPage(c, res)
+		response.OK(c, res)
 	})
 	apiGroup.GET("/users/:id", func(c *gin.Context) {
 		var req struct {
@@ -186,7 +186,7 @@ func deleteUser(c *gin.Context, repo *userRepo) {
 			InsertArgs(u.Name))
 		return
 	}
-	response.NoContent(c)
+	response.OK(c, nil)
 }
 
 func seedUsers(n int) []user {

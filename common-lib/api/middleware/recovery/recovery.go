@@ -33,7 +33,9 @@ func Recovery() gin.HandlerFunc {
 				c.Abort()
 				return
 			}
-			resp := response.NewResponse(c, http.StatusInternalServerError, "internal error")
+			resp := response.ApiResponse{
+				Code: http.StatusInternalServerError, ErrMsg: "internal error", TxID: reqctx.TxIDOf(c),
+			}
 			c.AbortWithStatusJSON(http.StatusInternalServerError, resp)
 		}()
 		c.Next()

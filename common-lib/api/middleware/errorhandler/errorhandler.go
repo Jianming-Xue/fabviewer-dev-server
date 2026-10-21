@@ -91,21 +91,27 @@ func writeError(c *gin.Context, err error, cfg handlerConfig) {
 	}
 	switch {
 	case errors.Is(err, gorm.ErrRecordNotFound), errors.Is(err, sql.ErrNoRows):
-		r := response.NewResponse(c, http.StatusNotFound, "resource not found")
-		response.Write(c, http.StatusNotFound, &r)
+		r := response.ApiResponse{
+			Code: http.StatusNotFound, ErrMsg: "resource not found", TxID: reqctx.TxIDOf(c),
+		}
+		response.Write(c, &r)
 	case errors.Is(err, context.Canceled):
 		logx.Info("client canceled request",
 			"path", c.Request.URL.Path, "tx_id", reqctx.TxIDOf(c))
-		r := response.NewResponse(c, errresp.StatusClientClosedRequest, "client canceled request")
-		response.Write(c, errresp.StatusClientClosedRequest, &r)
+		r := response.ApiResponse{
+			Code: errresp.StatusClientClosedRequest, ErrMsg: "client canceled request", TxID: reqctx.TxIDOf(c),
+		}
+		response.Write(c, &r)
 	default:
 		logx.Error("unhandled error",
 			"err", err.Error(),
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
 			"tx_id", reqctx.TxIDOf(c))
-		r := response.NewResponse(c, http.StatusInternalServerError, "internal error")
-		response.Write(c, http.StatusInternalServerError, &r)
+		r := response.ApiResponse{
+			Code: http.StatusInternalServerError, ErrMsg: "internal error", TxID: reqctx.TxIDOf(c),
+		}
+		response.Write(c, &r)
 	}
 }
 
@@ -130,6 +136,6 @@ func writeBizError(c *gin.Context, e *bizerror.BizError, cfg handlerConfig) {
 		"method", c.Request.Method,
 		"path", c.Request.URL.Path,
 		"tx_id", reqctx.TxIDOf(c))
-	r := response.NewResponse(c, status, message)
-	response.Write(c, status, &r)
+	r := response.ApiResponse{Code: status, ErrMsg: message, TxID: reqctx.TxIDOf(c)}
+	response.Write(c, &r)
 }

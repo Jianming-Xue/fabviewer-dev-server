@@ -28,7 +28,7 @@ func (h *userHandler) create(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	response.Created(c, dto)
+	response.OK(c, dto)
 }
 
 // list GET /api/users?pageIndex=&pageSize=
@@ -38,7 +38,7 @@ func (h *userHandler) list(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	response.OKPage(c, page)
+	response.OK(c, page)
 }
 
 // get GET /api/users/:id
@@ -62,5 +62,5 @@ func (h *userHandler) delete(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	response.NoContent(c)
+	response.OK(c, nil)
 }
