@@ -30,6 +30,12 @@ go run ./cmd/server    # 无数据库环境变量 → memory 模式（重启即�
 Oracle 模式（生产）：设 `SM_DB_USER / SM_DB_PASSWORD / SM_DB_HOST /
 SM_DB_PORT / SM_DB_SERVICE / SM_ADDR`，并执行 `storage/oracle/schema.sql`。
 
+日志与配置（2026-10-21 起读仓库根 `application.yml`，appName=security）：
+console（console 格式）+ `systemlogs/security-management.log`（json 格式，
+lumberjack 滚动 100MB/200 份，caller 指向业务调用行）；叶子配置可经
+`security.*` 环境变量覆盖（如 `security.log.file.maxSize=200`），文件路径
+可经 `security_CFG` 覆盖。
+
 ```bash
 curl -i -X POST -H 'Content-Type: application/json' -H 'userName: ops-admin' \
      -d '{"username":"zhangsan","name":"张三"}' http://localhost:8081/api/users
@@ -39,9 +45,6 @@ curl -i -X DELETE -H 'Accept-Language: zh-CN' http://localhost:8081/api/users/<i
 curl -i -X DELETE 'http://localhost:8081/api/users/<id>?confirm=true'   # → 204
 ```
 
-日志：stdout + `systemlogs/security-management.log`（100MB 编号滚动，
-`log.1 ... log.200`）。
-
 ## 已发现的 common-lib 差异点（实战检验记录）
 
 1. **事务跨层传递缺约定**：`domain.TxManager` 已定义，但 GORM 事务句柄
@@ -50,8 +53,9 @@ curl -i -X DELETE 'http://localhost:8081/api/users/<id>?confirm=true'   # → 20
 2. **通用仓储只有 Create/Update**：查询/删除全走 GORM 出口自写——业务
    实际主要是查询，common-lib 的 `repository.Repository[T]` 可考虑补
    Get/List/Delete/Count。
-3. **配置无加载器**：环境变量/文件 → `oracle/config.Config` 的解析服务
-   自己写（cmd/server 的 envOr 系列）。
+3. ~~**配置无加载器**~~ **已解决**（2026-10-21）：`common/config` 落地，
+   本服务已切到 application.yml + `LoadConfig`；存储段（oracle 等）待
+   cmd/server 统一装配时一并切入。
 4. **`paging.NewPageable` 的 nil 无法推断类型参数**：空结果必须显式
    `NewPageable[T](...)`。
 5. **审计行为两套实现要各自保证**：oracle 走 BasePO 钩子自动填，

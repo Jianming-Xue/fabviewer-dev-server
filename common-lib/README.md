@@ -24,9 +24,10 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 
 | common-lib 包 | 接口访问层 | 服务层 | 业务聚合层 | 存储层 | 对象层 | main 组装根 |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `common/fverr` / `common/paging` / `common/actortx` / `common/rctx`（跨层，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `common/logx`（zap 引擎完整日志工具，见下节） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `common/rctx`、`common/i18n`（跨层运行时上下文与多语言表，仅依赖标准库与 `common/rctx`） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `common/bizerror` / `common/paging` / `common/rctx`（跨层，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `common/config`（配置加载：application.yml + 环境变量覆盖 + 段绑定） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `common/logx`（日志完整工具：Init + 包级函数，见下节） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `common/i18n`（多语言表能力，仅依赖标准库与 `common/rctx`） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `api`、`api/middleware` | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/clickhouse`（`config`/`batch` 子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
 
@@ -36,7 +37,7 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
   把存储层的 `Ping` 实现注入路由）。
 - **SDK 类型不越层**：`*gorm.DB`、`*opensearch.Client` 等只允许出现在业务存储层内部，
   存储层对上的接口签名用业务自定义类型 + `errs`/`paging` 类型。
-- **跨层共享靠依赖倒置**：接口层 `api.PageQuery(c)` 产出 `paging.Query` 沿层传递，
+- **跨层共享靠依赖倒置**：接口层 `api.PageQuery(c)` 产出 `paging.PageRequest` 沿层传递，
   存储层消费 `q.Limit()/q.Offset()` 或 `search.WithPaging(q)`；`api` 与 `storage`
   互不感知，只在 `paging`/`errs` 相会。
 
@@ -119,8 +120,8 @@ res, err := opensearch.Search[model.User](ctx, cli, "users", q)
 |---|---|
 | 分层结构 | 去掉接口访问层与 DTO；保留 service / application / storage / 对象层；main 兼任调度入口（组装根豁免仍适用） |
 | 对象流转 | 简化为 **VO ↔ PO**（DTO→VO 一步消失，任务参数直接是业务参数） |
-| 错误处理 | 没有 ErrorHandler 中间件兜底——任务循环内自行处理：`log.Error` 记录（errs 包装自带操作上下文），并按 `errs.Code` 决定重试/跳过/告警（如 CodeDB 重试、CodeValidation 告警并跳过） |
-| 日志 | 启动时 `logx.SetDefault(log)`；每个任务用 `log.With("job", "xxx_settle")` 派生，日志自动带任务标识 |
+| 错误处理 | 没有 ErrorHandler 中间件兜底——任务循环内自行处理：`logx.Error` 记录（bizerror 包装自带操作上下文），并按 `bizerror.Code` 决定重试/跳过/告警（如 CodeDB 重试、CodeValidation 告警并跳过） |
+| 日志 | 装配时 `logx.Init(cfgMap)`；每个任务用 `logx.Default().With("job", "xxx_settle")` 派生，日志自动带任务标识 |
 | 分页 | 批处理通常不翻页；ClickHouse `Batch[T]` 是定时任务主力写入器 |
 | 事务 | 结算/对账类任务用 `GORM().Transaction` + `conn.CallProcTx`（conn.FromGorm 取事务连接），已有完整约定 |
 | 优雅退出 | 信号 → 停止调度（不取新任务）→ 等待在跑任务完成（带超时）→ 依次 Close 各存储客户端——顺序错误会丢未发送的 Batch 数据 |
@@ -154,7 +155,7 @@ r.Use(
 
 r.GET("/api/users", func(c *gin.Context) {
     q := api.PageQuery(c) // 解析 ?pageIndex=&pageSize=，非法值回退默认
-    res, err := userRepo.List(c.Request.Context(), q) // 返回 paging.Result[User]
+    res, err := userRepo.List(c.Request.Context(), q) // 返回 paging.Pageable[User]
     if err != nil {
         _ = c.Error(err) // 交给 ErrorHandler 统一写回，不要自行写错误响应
         return
@@ -248,7 +249,7 @@ check-layers:
 
 ```json
 {"code":200,"success":true,"errMsg":"",
- "contents":{"pageSize":5,"pageIndex":2,"totalSize":57,"data":[...]},
+ "contents":{"pageIndex":2,"pageSize":10,"totalSize":57,"totalPage":6,"data":[...]},
  "txId":"0c8f..."}
 ```
 
@@ -256,77 +257,106 @@ check-layers:
 {"code":400,"success":false,"errMsg":"参数 email 格式不正确","contents":null,"txId":"0c8f..."}
 ```
 
-- 分页请求参数为 `pageIndex`/`pageSize`（`api.PageQuery` 解析，非法回退默认值）；
-  分页出参 **pageable**（`paging.Pageable`：pageSize/pageIndex/totalSize/data）置于 `contents`。
-- 字符串业务错误码（`errs.Code`）与明细（`Details`）不出参：错误码只用于内部映射
+- 分页请求参数为 `pageIndex`/`pageSize`（`api.PageQuery` 解析为
+  `paging.PageRequest`；非法回退默认值 **1/10**，pageSize 上限
+  `MaxPageSize=100`）；分页出参 **pageable**（`paging.Pageable`：
+  pageIndex/pageSize/totalSize/**totalPage**/data）置于 `contents`，
+  totalPage 为 totalSize/pageSize 向上取整（不整除进一、整除不加，
+  totalSize=0 为 0）。
+- 字符串业务错误码（`bizerror.Code`）与明细（`Details`）不出参：错误码只用于内部映射
   与日志，明细随 `business error` 日志留痕（`ErrorHandler`）。
 
 ### 请求运行时上下文（common/rctx.RuntimeContext）
 
 `middleware.FillRuntimeContext` 解析请求头五个字段
 （txId/txTime/txName/userName + 标准头 `Accept-Language`），包装为**整个请求
-期间**可用的上下文（`rctx.RuntimeContext`），
-三路注入：
+期间**可用的上下文（`rctx.RuntimeContext`，**字段私有**：WithXxx 链式赋值、
+FromXxx 取值），两路注入（请求 context + gin）：
 
-| 请求头 | RuntimeContext 字段 | 兜底规则 |
+| 请求头 | 赋值 / 取值 | 兜底规则 |
 |---|---|---|
-| `txId` | `ID` | 缺失生成 32 位 hex，透传优先 |
-| `txTime` | `Time` | 格式 yyyyMMDDHHmmss；缺失/解析失败用服务器时间 |
-| `txName` | `Name` | 无（可空） |
-| `userName` | `User` | 无（可空；同时注入 actortx 操作者上下文） |
-| `Accept-Language` | `Lang` | 取 q 值最高的首选语言并规范化（如 `zh-CN`）；缺失/非法为空串，i18n 回退默认语言 |
+| `txId` | `WithID` / `FromID` | 缺失生成 32 位 hex，透传优先 |
+| `txTime` | `WithTime` / `FromTime` | 格式 yyyyMMDDHHmmss；缺失/解析失败用服务器时间 |
+| `txName` | `WithName` / `FromName` | 无（可空） |
+| `userName` | `WithUser` / `FromUser` | 无（可空；**即审计操作者**） |
+| `Accept-Language` | `WithLang` / `FromLang` | 取 q 值最高的首选语言并规范化（如 `zh-CN`）；缺失/非法为空串，i18n 回退默认语言 |
 
 - **业务层读取**：`rctx.GetRuntimeContext(c.Request.Context())` —— 沿 service/storage
-  全链路可读（跨层会合点，与 actortx/paging 同模式）
-- **审计打通**：`userName` 注入 actortx 操作者上下文，`oracle/repository` 仓储写库时
+  全链路可读（跨层会合点，与 paging 同模式）
+- **审计打通**：`userName` 即审计操作者（RuntimeContext.User），`oracle/repository` 仓储写库时
   `BasePO` 的 `CreatedBy`/`UpdatedBy` 自动填充，业务代码零感知
 - **访问日志**：自动携带 `tx_id`/`tx_name`/`user`
 - 定时任务无请求头，任务入口自注入：
-  `ctx = rctx.SetRuntimeContext(ctx, rctx.RuntimeContext{ID: snowflake.Next(), Name: "daily-settle"})`
+  `ctx = rctx.SetRuntimeContext(ctx, rctx.RuntimeContext{}.WithID(id).WithName("daily-settle"))`
 
-### 日志（common/logx：zap 引擎完整工具）
+### 日志（common/logx：Init + 包级函数）
 
-引擎为 **zap**（业界事实标准），出口可组合（至少一个）——标准输出 /
-**文件**（编号滚动：`log、log.1、log.2 ... log.N` 按大小触发、保留 N 份）/
-**OpenSearch 直写**（异步批量，`storage/opensearch/logsink`，Bulk API 写按日
-索引 `logs-yyyy.MM.dd`）。**每个出口可注入各自的自定义格式**（文件是业务
-字符串格式、远程是另一种 JSON 这类组合，经 `Encoder` + `logx.LineEncoder`
-适配业务格式函数）。
+**配置驱动**：application.yml 的 log 段 → `logx.Init(cfgMap)`（唯一初始化
+入口，配置结构私有不对外暴露；通常由 cmd/server 统一装配调用）→ 成功后
+自动落位全局出口 → 业务经**包级函数**记录，零持有日志对象。引擎为
+**zap**，出口两种（console / file，文件滚动为 **lumberjack**），至少启用
+一个否则 `ErrNoLogComponent`。
 
-```go
-// A 服务：文件=业务字符串格式（100MB 滚动留 200 份）+ OpenSearch=业务 JSON
-log, closeLog, err := logx.New(logx.Config{
-    File: &logx.FileConfig{
-        Path:       "systemlogs/svcA.log", // 目录自动创建，可配置
-        MaxSizeMB:  100,
-        MaxBackups: 200,                   // log.1 ... log.200
-        Encoder: logx.LineEncoder(func(r logx.Rec) string { // 业务自定义
-            return fmt.Sprintf("%s [%s] %s %v", r.Time.Format("2006-01-02 15:04:05"), r.Level, r.Msg, r.KV)
-        }),
-    },
-    Remote:       logsink.New(osCli, "logs"),
-    RemoteEncoder: logx.LineEncoder(func(r logx.Rec) string { // 业务自定义 JSON
-        b, _ := json.Marshal(map[string]any{"lvl": r.Level, "msg": r.Msg, "kv": r.KV})
-        return string(b)
-    }),
-})
-defer closeLog()
-
-// B 服务：仅文件（默认 JSON 格式）
-log, closeLog, err := logx.New(logx.Config{
-    File: &logx.FileConfig{Path: "systemlogs/svcB.log", MaxSizeMB: 100},
-})
+```yaml
+# application.yml
+log:
+  level: info            # 默认等级（四档 debug/info/warn/error）
+  console:
+    enabled: true
+    level: ""            # 空 → 用默认等级
+    format: console      # console | json（默认 json；非法取值静默按 json）
+  file:
+    enabled: true
+    format: json
+    path: systemlogs/server.log   # 默认值
+    maxSize: 100         # 兆，默认 100
+    maxBackups: 100      # 默认 100
+    maxAge: 30           # 天，默认 30（超期备份清理）
+    compress: false      # 默认 false（旧备份 gzip）
+    localTime: true      # 默认 true（备份名时间戳时区；false 用 UTC）
 ```
 
-- 远程出口**异步批量**（默认 256 行/批或 5s 刷出）：缓冲满即丢弃计数，
-  **绝不反压业务**；ES 不可用时丢日志但不影响服务
-- Logger 五方法接口仍是库内组件（中间件/存储）与业务日志的统一接缝；
-  已有自有日志设施的服务实现接口即可接入（`NewSlog` 适配标准库 slog）
-- 依赖：zap（depguard 已固化白名单；滚动为自研编号方案，无额外依赖）
+```go
+log, closeLog, err := logx.Init(cfgMap) // 由 cmd/server 装配调用
+if err != nil { ... }
+defer closeLog()                        // Sync 并关闭文件（优雅停机处）
 
-### 统一错误与国际化（common/fverr + common/i18n + cmd/i18nerr）
+logx.Info("user created", "id", id)     // 业务代码：包级函数直记
+logx.Error("query failed", "err", err)
+```
 
-`common/fverr` 提供统一业务错误 **FvError**（Code/Message/Err/Details 四字段）：
+- 等级链：出口 level → log.level → info，**静默兜底不报错**
+- **caller 指向业务调用行**（AddCallerSkip(1) + 包级函数直调 zap 实例）
+- 测试经 `logx.SetLogger(l)` 注入（Nop 静默或捕获式 fake；注入后包级函数
+  自动降级走接口转发）
+- Logger 五方法接口仍是库内组件（中间件/存储）的统一接缝；携带固定字段
+  用 `logx.Default().With("k", v)`
+- 依赖：zap + lumberjack（depguard 已固化白名单）。远程出口（logsink/
+  异步批量）与自定义格式机制（LineEncoder）已于 2026-10-21 移除
+
+### 配置加载（common/config）
+
+每业务服务自维护 application.yml，本包只提供加载/读取/校验能力、不内置
+任何配置项。`LoadConfig(appName)`：文件路径取环境变量 `{appName}_CFG`
+（缺省工作目录 application.yml；仅 yml/yaml/json）→ 解析为嵌套 map →
+**叶子环境变量覆盖**（路径点连接加 appName 前缀，如 `security.log.level`；
+覆盖值 string 原样进 map，类型转换推迟到绑定）。读取三件套：
+
+```go
+m, _ := config.LoadConfig("security")
+cfg, err := config.GetSection[oracleconfig.Config](m, "storage.oracle") // 绑定
+raw := config.Get(m, "log.file")                                        // 原始子 map，未命中 nil
+err = config.ValidateIsNumber(m, "log.file.maxSize")                    // 断言式校验
+```
+
+字段匹配：mapstructure tag 优先，无 tag 按完整字段名忽略大小写；
+`ValidateIsNumber/IsBoolean` 为宽松判断（"200" 算数字、"true" 算布尔，
+与环境变量覆盖机制一致）。
+
+### 统一错误与国际化（common/bizerror + common/i18n + cmd/i18nerr）
+
+`common/bizerror` 提供统一业务错误 **BizError**（Code/Message/Err/Details
+四字段，原 FvError/fverr 包 2026-10-21 更名）：
 出口只输出 Message，Code 查状态码表、根因与明细全进日志。**每模块自己的多语言
 表**：错误文案按语言写成 Go 文件（`messages_<语言>.go`，编译期进包），生成器
 产出模块字典与构造函数——创建错误时按请求语言查模板插参，**出口不做翻译**，
@@ -353,15 +383,15 @@ _ = c.Error(usererrors.NewConfirmDeleteUser(ctx).InsertArgs(u.Name))
 
 // 4. 出口（ErrorHandler）直出 Message；模块码经 WithStatusMap 映射状态码
 r.Use(middleware.ErrorHandler(log,
-    middleware.WithStatusMap(map[fverr.Code]int{
+    middleware.WithStatusMap(map[bizerror.Code]int{
         usererrors.CodeUserNotFound: http.StatusNotFound,
     }), ...)
 ```
 
-- **唯一构造函数**：`fverr.NewError(code, message, args...)`——Message 直传、
+- **唯一构造函数**：`bizerror.NewError(code, message, args...)`——Message 直传、
   args 按序替换 {0} {1} 占位符（模块构造函数内部先查字典再交给它；基础设施层
   直传 message，根因经 `.AttachError(err, nil)` 链上）
-- **判断**：`fverr.IsError(err)`、`fverr.From(err)`（errors.Is/As 全兼容）
+- **判断**：`bizerror.IsError(err)`、`bizerror.From(err)`（errors.Is/As 全兼容）
 - **语言来源**：标准头 `Accept-Language`（q 值降序取首选并规范化），经
   `FillRuntimeContext` 注入 `rctx.RuntimeContext.Lang`，全链路可读
 - **回退链**：请求语言精确 → 基础语言（`zh-CN` → `zh`，只收窄不放宽）→
@@ -371,7 +401,7 @@ r.Use(middleware.ErrorHandler(log,
 业务错误码 → HTTP 状态码映射（`api.DefaultStatusMap`，可经 `middleware.WithStatusMap` 增补；
 映射结果同时决定 HTTP 状态与响应 code）：
 
-| fverr.Code | HTTP（即响应 code） |
+| bizerror.Code | HTTP（即响应 code） |
 |---|---|
 | OK | 200 |
 | VALIDATION_ERROR | 400 |
@@ -447,7 +477,7 @@ make integration
 make fmt       # gofmt + goimports（提交前跑）
 ```
 
-覆盖率分级：跨层包（common/fverr、common/paging、common/logx）与 api ≥99%；存储包装层 ≥95%（握手类路径由
+覆盖率分级：跨层包（common/bizerror、common/paging、common/logx、common/config）与 api ≥99%；存储包装层 ≥95%（握手类路径由
 集成测试兜底）。
 
 ## 示例
