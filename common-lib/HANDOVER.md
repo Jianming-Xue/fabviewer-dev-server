@@ -12,14 +12,15 @@ module 名为占位、业务方经 `replace` 本地引用；2026-10-20 起 git �
 security-management 并列，仓库级交接见上级 [HANDOVER](../HANDOVER.md)）。
 被两类业务系统 import：
 
-- **RESTful API 业务**（Gin）：用 `api` + `api/middleware` + 存储包
+- **RESTful API 业务**（Gin）：用 `api/*`（reqctx/request/response/errresp 与
+  `api/middleware/*` 四子包）+ 存储包
 - **内部定时器业务**（无接口层）：只用跨层包 + 存储包
 
 硬约束：**零后台 goroutine**、全同步调用路径、import 路径即能力边界。
 
 ## 2. 核心设计理念（务必先懂再动）
 
-1. **import 路径即能力边界**：`api`/`api/middleware` 只准接口访问层 import
+1. **import 路径即能力边界**：`api/*` 各包只准接口访问层 import
    （Gin 依赖从这里开始）；`storage/*` 只准存储层 import；`common/*` 跨层通用。
    由 `.golangci.yml` depguard 强制（deny 是前缀匹配，能命中全部子包）。
 2. **跨层会合点**：`api` 与 `storage` 互不感知，只在小包相会——
@@ -56,8 +57,14 @@ common/rctx       RuntimeContext（五字段私有，WithXxx 链式赋值/FromXx
                   User 即审计操作者——原 actortx 包已并入删除）
 common/i18n       Bundles 模块多语言表 + Accept-Language 解析（只提供能力，
                   译文业务每模块自维护；仅依赖 rctx）
-api               Response/OK/OKPage/Fail、PageQuery、DefaultStatusMap
-api/middleware    AccessLog → ErrorHandler → Recovery → FillRuntimeContext（顺序固定）
+api/reqctx        gin ↔ rctx 绑定：五请求头常量、CtxRuntimeContext key、
+                  RuntimeContextOf/TxIDOf/LangOf 取值语法糖、WithActor
+api/request       请求参数对象解析：PageQuery（pageIndex/pageSize → PageRequest）
+api/response      统一响应体 apiresponse：Response 五字段恒序列化 +
+                  OK/Created/NoContent/OKPage/Write 写回
+api/errresp       错误响应：Fail、DefaultStatusMap/StatusFor（Code → HTTP 状态码）
+api/middleware    按处理流程点分包（根包仅承载注册顺序契约与全栈测试）：
+                  accesslog → errorhandler → recovery → runtimecontext（顺序固定）
 storage/oracle/conn        Open、DB 三通道（GORM/SQL/存储过程）、Cursor、driverAdapter
 storage/oracle/config      Config/WithDefaults/Validate/BuildDSN
 storage/oracle/base        BasePO 审计基类（GORM 钩子自动填 CreatedBy 等，取 rctx.User）
@@ -89,7 +96,7 @@ logx 依赖 config（段读取）；batch/search 依赖各自根包；所有存�
 
 ### 4.2 分页（2026-10-21 拍板新契约）
 
-- 入参：`?pageIndex=2&pageSize=10`（`api.PageQuery` 解析为
+- 入参：`?pageIndex=2&pageSize=10`（`request.PageQuery` 解析为
   `paging.PageRequest`；非法回退 **1/10**，pageSize 上限 **MaxPageSize=100**）
 - 出参（置于 contents）：`{"pageIndex":2,"pageSize":10,"totalSize":57,
   "totalPage":6,"data":[...]}`——totalPage 为 totalSize/pageSize **向上取整**
@@ -97,7 +104,7 @@ logx 依赖 config（段读取）；batch/search 依赖各自根包；所有存�
 
 ### 4.3 请求运行时上下文（rctx）
 
-请求头四字段 + `Accept-Language` → `middleware.FillRuntimeContext` →
+请求头四字段 + `Accept-Language` → `runtimecontext.FillRuntimeContext` →
 `rctx.RuntimeContext`（**字段私有**）两路注入（请求 context + gin）：
 
 | header | 赋值 | 取值 | 兜底 |

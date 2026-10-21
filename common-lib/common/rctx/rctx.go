@@ -67,10 +67,10 @@ func (rc RuntimeContext) FromTime() time.Time { return rc.time } //nolint:gocrit
 func (rc RuntimeContext) FromName() string { return rc.name } //nolint:gocritic //hugeParam：不可变值快照
 
 // FromUser 取 userName（审计操作者）。
-func (rc RuntimeContext) FromUser() string { return rc.user }
+func (rc RuntimeContext) FromUser() string { return rc.user } //nolint:gocritic //hugeParam：不可变值快照
 
 // FromLang 取请求语言。
-func (rc RuntimeContext) FromLang() string { return rc.lang }
+func (rc RuntimeContext) FromLang() string { return rc.lang } //nolint:gocritic //hugeParam：不可变值快照
 
 // SetRuntimeContext 返回携带 RuntimeContext 的上下文（值语义：基于 ctx
 // 包一层返回新 context，需接收返回值继续传递）。

@@ -1,6 +1,6 @@
-package middleware
+package runtimecontext
 
-// 本文件只在测试编译期存在，向 middleware_test 包导出内部钩子，
+// 本文件只在测试编译期存在，向 runtimecontext_test 包导出内部钩子，
 // 不进入库的公共 API。
 
 // SetRandRead 替换随机源（注入失败以测降级分支）。

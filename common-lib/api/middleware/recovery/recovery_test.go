@@ -1,4 +1,4 @@
-package middleware_test
+package recovery_test
 
 import (
 	"encoding/json"
@@ -9,17 +9,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/fab-viewer/common-lib/api/middleware"
+	"github.com/fab-viewer/common-lib/api/internal/testutil"
+	"github.com/fab-viewer/common-lib/api/middleware/recovery"
 	"github.com/fab-viewer/common-lib/common/logx"
 )
 
 func TestRecoveryPanickingHandler(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.Recovery(log))
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(recovery.Recovery(log))
 	r.GET("/boom", func(_ *gin.Context) { panic("something exploded") })
 
-	w := doGet(r, "/boom")
+	w := testutil.DoGet(r, "/boom")
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 
 	var body struct {
@@ -32,54 +33,54 @@ func TestRecoveryPanickingHandler(t *testing.T) {
 	assert.False(t, body.Success)
 	assert.Equal(t, "internal error", body.ErrMsg, "不向调用方泄漏 panic 内容")
 
-	records := log.snapshot()
+	records := log.Snapshot()
 	require.Len(t, records, 1)
 	rec := records[0]
 	assert.Equal(t, "error", rec.Level)
 	assert.Equal(t, "panic recovered", rec.Msg)
-	v, ok := kvGet(rec.KV, "error")
+	v, ok := testutil.KVGet(rec.KV, "error")
 	require.True(t, ok)
 	assert.Equal(t, "something exploded", v)
-	_, ok = kvGet(rec.KV, "stack")
+	_, ok = testutil.KVGet(rec.KV, "stack")
 	assert.True(t, ok, "panic 日志必须带堆栈")
 }
 
 func TestRecoveryAfterPartialWrite(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.Recovery(log))
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(recovery.Recovery(log))
 	r.GET("/partial", func(c *gin.Context) {
 		c.String(http.StatusOK, "partial response")
 		panic("late panic")
 	})
 
-	w := doGet(r, "/partial")
+	w := testutil.DoGet(r, "/partial")
 	assert.Equal(t, "partial response", w.Body.String(), "已写部分响应不得被二次写")
-	assert.Len(t, log.snapshot(), 1, "panic 仍应记录日志")
+	assert.Len(t, log.Snapshot(), 1, "panic 仍应记录日志")
 }
 
 func TestRecoveryNormalPassThrough(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.Recovery(log))
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(recovery.Recovery(log))
 	r.GET("/ok", func(c *gin.Context) { c.String(http.StatusOK, "fine") })
 
-	w := doGet(r, "/ok")
+	w := testutil.DoGet(r, "/ok")
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "fine", w.Body.String())
-	assert.Empty(t, log.snapshot(), "无 panic 不产生日志")
+	assert.Empty(t, log.Snapshot(), "无 panic 不产生日志")
 }
 
 func TestRecoveryNilLoggerUsesDefault(t *testing.T) {
-	capture := &captureLogger{}
+	capture := &testutil.CaptureLogger{}
 	logx.SetLogger(capture)
 	t.Cleanup(func() { logx.SetLogger(logx.Nop()) })
 
-	r := newTestEngine()
-	r.Use(middleware.Recovery(nil)) // nil → logx.Default()
+	r := testutil.NewTestEngine()
+	r.Use(recovery.Recovery(nil)) // nil → logx.Default()
 	r.GET("/boom", func(_ *gin.Context) { panic("x") })
 
-	w := doGet(r, "/boom")
+	w := testutil.DoGet(r, "/boom")
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
-	assert.Len(t, capture.snapshot(), 1, "nil logger 应回退到 logx.Default()")
+	assert.Len(t, capture.Snapshot(), 1, "nil logger 应回退到 logx.Default()")
 }

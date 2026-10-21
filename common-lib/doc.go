@@ -4,7 +4,11 @@
 //
 // 包按消费者组织，import 路径即能力边界，与业务系统的分层结构一一对应：
 //
-//	接口访问层  → api、api/middleware（仅此层可 import，Gin 依赖从这里开始）
+//	接口访问层  → api 按功能分包：reqctx（请求运行时上下文的 gin 侧绑定）、
+//	              request（请求参数对象解析）、response（统一响应体写回）、
+//	              errresp（错误响应与状态码映射）、api/middleware 按处理
+//	              流程点分包（accesslog/errorhandler/recovery/runtimecontext）
+//	              ——仅此层可 import，Gin 依赖从这里开始
 //	存储层      → storage/oracle、storage/clickhouse、storage/opensearch、
 //	              storage/snowflake（ID 生成）、storage 根（PoolConfig）
 //	所有层      → common/bizerror、common/paging、common/rctx（操作者并入 RuntimeContext.User）
@@ -18,10 +22,10 @@
 //
 // REST 接口层示例：
 //
-//	r.Use(middleware.ErrorHandler(log), middleware.Recovery(log),
-//	      middleware.AccessLog(log), middleware.FillRuntimeContext())
-//	q := api.PageQuery(c)
-//	api.OKPage(c, res)
+//	r.Use(accesslog.AccessLog(log), errorhandler.ErrorHandler(log),
+//	      recovery.Recovery(log), runtimecontext.FillRuntimeContext())
+//	q := request.PageQuery(c)
+//	response.OKPage(c, res)
 //
 // 定时器存储层示例（无接口层，不 import api）：
 //

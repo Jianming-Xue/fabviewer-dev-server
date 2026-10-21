@@ -1,4 +1,4 @@
-package middleware
+package runtimecontext
 
 import (
 	"crypto/rand"
@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/fab-viewer/common-lib/api"
+	"github.com/fab-viewer/common-lib/api/reqctx"
 	"github.com/fab-viewer/common-lib/common/i18n"
 	"github.com/fab-viewer/common-lib/common/rctx"
 )
@@ -20,7 +20,7 @@ import (
 //   - 请求 context（rctx.SetRuntimeContext）：service/storage 层经 rctx.GetRuntimeContext
 //     全链路可读；userName 即审计操作者（oracle 审计钩子自动填
 //     CreatedBy/UpdatedBy）
-//   - gin.Context（key 为 api.CtxRuntimeContext）：响应体 txId 字段读取
+//   - gin.Context（key 为 reqctx.CtxRuntimeContext）：响应体 txId 字段读取
 //
 // 兜底规则：txId 缺失用 crypto/rand 生成 16 字节 hex（缺失兜底行为待定，
 // 如需调整只改本函数）；txTime 缺失或非 yyyyMMDDHHmmss 用服务器时间；
@@ -28,25 +28,25 @@ import (
 // 统一回写响应头 txId。
 func FillRuntimeContext() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id := c.GetHeader(api.HeaderTxID)
+		id := c.GetHeader(reqctx.HeaderTxID)
 		if id == "" {
 			id = newTxID()
 		}
 		lang := ""
-		if langs := i18n.ParseAcceptLanguage(c.GetHeader(api.HeaderAcceptLanguage)); len(langs) > 0 {
+		if langs := i18n.ParseAcceptLanguage(c.GetHeader(reqctx.HeaderAcceptLanguage)); len(langs) > 0 {
 			lang = string(langs[0])
 		}
 		rc := rctx.RuntimeContext{}.
 			WithID(id).
-			WithTime(parseTxTime(c.GetHeader(api.HeaderTxTime))).
-			WithName(c.GetHeader(api.HeaderTxName)).
-			WithUser(c.GetHeader(api.HeaderUserName)).
+			WithTime(parseTxTime(c.GetHeader(reqctx.HeaderTxTime))).
+			WithName(c.GetHeader(reqctx.HeaderTxName)).
+			WithUser(c.GetHeader(reqctx.HeaderUserName)).
 			WithLang(lang)
-		c.Set(api.CtxRuntimeContext, rc)
+		c.Set(reqctx.CtxRuntimeContext, rc)
 
 		c.Request = c.Request.WithContext(rctx.SetRuntimeContext(c.Request.Context(), rc))
 
-		c.Header(api.HeaderTxID, rc.FromID())
+		c.Header(reqctx.HeaderTxID, rc.FromID())
 		c.Next()
 	}
 }

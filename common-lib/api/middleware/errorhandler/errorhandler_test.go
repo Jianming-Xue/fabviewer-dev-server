@@ -1,4 +1,4 @@
-package middleware_test
+package errorhandler_test
 
 import (
 	"context"
@@ -14,12 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"github.com/fab-viewer/common-lib/api/middleware"
+	"github.com/fab-viewer/common-lib/api/internal/testutil"
+	"github.com/fab-viewer/common-lib/api/middleware/errorhandler"
+	"github.com/fab-viewer/common-lib/api/middleware/runtimecontext"
 	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/logx"
 )
 
-// errBody 是错误响应的解码目标（api.Response）。
+// errBody 是错误响应的解码目标（response.Response）。
 type errBody struct {
 	Code     int    `json:"code"`
 	Success  bool   `json:"success"`
@@ -55,12 +57,12 @@ func TestErrorHandlerCodeMap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			log := &captureLogger{}
-			r := newTestEngine()
-			r.Use(middleware.ErrorHandler(log))
+			log := &testutil.CaptureLogger{}
+			r := testutil.NewTestEngine()
+			r.Use(errorhandler.ErrorHandler(log))
 			r.GET("/e", func(c *gin.Context) { _ = c.Error(tt.err) })
 
-			w := doGet(r, "/e")
+			w := testutil.DoGet(r, "/e")
 			require.Equal(t, tt.wantStatus, w.Code)
 
 			var b errBody
@@ -75,37 +77,37 @@ func TestErrorHandlerCodeMap(t *testing.T) {
 func TestErrorHandlerFvMessageDirectOutput(t *testing.T) {
 	// BizError 的 Message 创建时已翻译（bizerror.New 查模块字典 + InsertArgs），
 	// 出口直接输出，不做翻译。
-	log := &captureLogger{}
-	r := newTestEngine()
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
 	r.Use(
-		middleware.ErrorHandler(log),
-		middleware.FillRuntimeContext(),
+		errorhandler.ErrorHandler(log),
+		runtimecontext.FillRuntimeContext(),
 	)
 	r.GET("/e", func(c *gin.Context) {
 		_ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "用户 42 不存在").AttachError(errors.New("root"), nil))
 	})
 
-	w := doGet(r, "/e")
+	w := testutil.DoGet(r, "/e")
 	var b errBody
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
 	assert.Equal(t, "用户 42 不存在", b.ErrMsg, "Message 直出，出口不翻译")
 	assert.Equal(t, http.StatusNotFound, b.Code)
 
-	records := log.snapshot()
+	records := log.Snapshot()
 	require.Len(t, records, 1)
-	code, _ := kvGet(records[0].KV, "code")
+	code, _ := testutil.KVGet(records[0].KV, "code")
 	assert.Equal(t, "NOT_FOUND", code, "错误码进日志")
 }
 
 func TestErrorHandlerDetailsToLogNotResponse(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.ErrorHandler(log))
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(errorhandler.ErrorHandler(log))
 	r.GET("/e", func(c *gin.Context) {
 		_ = c.Error(bizerror.NewError(bizerror.CodeValidation, "参数非法").AttachError(nil, map[string]any{"field": "email"}))
 	})
 
-	w := doGet(r, "/e")
+	w := testutil.DoGet(r, "/e")
 	require.Equal(t, http.StatusBadRequest, w.Code)
 
 	var b errBody
@@ -114,131 +116,131 @@ func TestErrorHandlerDetailsToLogNotResponse(t *testing.T) {
 	assert.NotContains(t, w.Body.String(), "details", "明细不出参")
 	assert.NotContains(t, w.Body.String(), "email", "明细值不出参")
 
-	records := log.snapshot()
+	records := log.Snapshot()
 	require.Len(t, records, 1)
 	assert.Equal(t, "info", records[0].Level, "业务错误按 info 记录")
 	assert.Equal(t, "business error", records[0].Msg)
-	code, _ := kvGet(records[0].KV, "code")
+	code, _ := testutil.KVGet(records[0].KV, "code")
 	assert.Equal(t, string(bizerror.CodeValidation), code, "字符串错误码进日志")
-	details, _ := kvGet(records[0].KV, "details")
+	details, _ := testutil.KVGet(records[0].KV, "details")
 	assert.Contains(t, details, "email", "明细进日志")
 }
 
 func TestErrorHandlerContextCanceled(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.ErrorHandler(log))
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(errorhandler.ErrorHandler(log))
 	r.GET("/e", func(c *gin.Context) { _ = c.Error(context.Canceled) })
 
-	w := doGet(r, "/e")
+	w := testutil.DoGet(r, "/e")
 	require.Equal(t, 499, w.Code)
 
-	records := log.snapshot()
+	records := log.Snapshot()
 	require.Len(t, records, 1)
 	assert.Equal(t, "info", records[0].Level, "客户端断开按 info 记录")
 	assert.Equal(t, "client canceled request", records[0].Msg)
 }
 
 func TestErrorHandlerUnknownError(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.ErrorHandler(log))
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(errorhandler.ErrorHandler(log))
 	r.GET("/e", func(c *gin.Context) { _ = c.Error(errors.New("password is hunter2")) })
 
-	w := doGet(r, "/e")
+	w := testutil.DoGet(r, "/e")
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.NotContains(t, w.Body.String(), "hunter2", "根因不进响应")
 
-	records := log.snapshot()
+	records := log.Snapshot()
 	require.Len(t, records, 1)
 	assert.Equal(t, "error", records[0].Level)
-	v, ok := kvGet(records[0].KV, "err")
+	v, ok := testutil.KVGet(records[0].KV, "err")
 	require.True(t, ok)
 	assert.Contains(t, v, "hunter2", "根因进日志")
 }
 
 func TestErrorHandlerWithStatusMap(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.ErrorHandler(log, middleware.WithStatusMap(map[bizerror.Code]int{
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(errorhandler.ErrorHandler(log, errorhandler.WithStatusMap(map[bizerror.Code]int{
 		bizerror.Code("USER_DISABLED"): http.StatusForbidden,
 	})))
 	r.GET("/e", func(c *gin.Context) { _ = c.Error(bizerror.NewError(bizerror.Code("USER_DISABLED"), "禁用")) })
 
-	w := doGet(r, "/e")
+	w := testutil.DoGet(r, "/e")
 	assert.Equal(t, http.StatusForbidden, w.Code, "模块码经 WithStatusMap 映射")
 }
 
 func TestErrorHandlerWithMessageFunc(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.ErrorHandler(log, middleware.WithMessageFunc(func(_ *gin.Context, _ *bizerror.BizError) string {
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(errorhandler.ErrorHandler(log, errorhandler.WithMessageFunc(func(_ *gin.Context, _ *bizerror.BizError) string {
 		return "overridden"
 	})))
 	r.GET("/e", func(c *gin.Context) { _ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "raw message")) })
 
 	var b errBody
-	require.NoError(t, json.Unmarshal(doGet(r, "/e").Body.Bytes(), &b))
+	require.NoError(t, json.Unmarshal(testutil.DoGet(r, "/e").Body.Bytes(), &b))
 	assert.Equal(t, "overridden", b.ErrMsg)
 
 	// messageFn 返回空串时保留原 errMsg
-	r2 := newTestEngine()
-	r2.Use(middleware.ErrorHandler(log, middleware.WithMessageFunc(func(_ *gin.Context, _ *bizerror.BizError) string {
+	r2 := testutil.NewTestEngine()
+	r2.Use(errorhandler.ErrorHandler(log, errorhandler.WithMessageFunc(func(_ *gin.Context, _ *bizerror.BizError) string {
 		return ""
 	})))
 	r2.GET("/e", func(c *gin.Context) { _ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "kept message")) })
-	require.NoError(t, json.Unmarshal(doGet(r2, "/e").Body.Bytes(), &b))
+	require.NoError(t, json.Unmarshal(testutil.DoGet(r2, "/e").Body.Bytes(), &b))
 	assert.Equal(t, "kept message", b.ErrMsg)
 }
 
 func TestErrorHandlerMultipleErrorsUsesLast(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.ErrorHandler(log))
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(errorhandler.ErrorHandler(log))
 	r.GET("/e", func(c *gin.Context) {
 		_ = c.Error(bizerror.NewError(bizerror.CodeInternal, "first"))
 		_ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "second"))
 	})
 
 	var b errBody
-	require.NoError(t, json.Unmarshal(doGet(r, "/e").Body.Bytes(), &b))
+	require.NoError(t, json.Unmarshal(testutil.DoGet(r, "/e").Body.Bytes(), &b))
 	assert.Equal(t, http.StatusNotFound, b.Code, "多个错误取最后一个")
 	assert.Equal(t, "second", b.ErrMsg)
 }
 
 func TestErrorHandlerSkipsWhenWritten(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.ErrorHandler(log))
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(errorhandler.ErrorHandler(log))
 	r.GET("/e", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"written": true})
 		_ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "ignored"))
 	})
 
-	w := doGet(r, "/e")
+	w := testutil.DoGet(r, "/e")
 	assert.JSONEq(t, `{"written":true}`, w.Body.String(), "已写过响应不覆盖")
 }
 
 func TestErrorHandlerNoErrors(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.ErrorHandler(log))
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(errorhandler.ErrorHandler(log))
 	r.GET("/ok", func(c *gin.Context) { c.String(http.StatusOK, "fine") })
 
-	w := doGet(r, "/ok")
+	w := testutil.DoGet(r, "/ok")
 	assert.Equal(t, "fine", w.Body.String())
-	assert.Empty(t, log.snapshot())
+	assert.Empty(t, log.Snapshot())
 }
 
 func TestErrorHandlerNilLoggerUsesDefault(t *testing.T) {
-	capture := &captureLogger{}
+	capture := &testutil.CaptureLogger{}
 	logx.SetLogger(capture)
 	t.Cleanup(func() { logx.SetLogger(logx.Nop()) })
 
-	r := newTestEngine()
-	r.Use(middleware.ErrorHandler(nil))
+	r := testutil.NewTestEngine()
+	r.Use(errorhandler.ErrorHandler(nil))
 	r.GET("/e", func(c *gin.Context) { _ = c.Error(errors.New("boom")) })
 
-	doGet(r, "/e")
-	assert.Len(t, capture.snapshot(), 1, "nil logger 应回退到 logx.Default()")
+	testutil.DoGet(r, "/e")
+	assert.Len(t, capture.Snapshot(), 1, "nil logger 应回退到 logx.Default()")
 }

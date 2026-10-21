@@ -6,6 +6,29 @@
 
 ## [Unreleased]
 
+### Changed（Breaking：API 层按功能分包）
+
+- `api` 根包删除，按功能拆为四包：`api/reqctx`（gin ↔ rctx 绑定：五请求头
+  常量、CtxRuntimeContext key、RuntimeContextOf/TxIDOf/LangOf 取值语法糖、
+  WithActor）、`api/request`（请求参数对象解析，PageQuery）、`api/response`
+  （统一响应体 apiresponse：Response/OK/Created/NoContent/OKPage/Write）、
+  `api/errresp`（错误响应：Fail、DefaultStatusMap/StatusFor、
+  StatusClientClosedRequest）
+- `api/middleware` 按处理流程点拆为四子包：`accesslog` / `errorhandler` /
+  `recovery` / `runtimecontext`；根包保留为注册顺序契约（纯文档）与跨四包
+  全栈集成测试。`accesslog.AccessLogOption` 更名 `Option`（分包后不再口吃）
+- 新增 `api/internal/testutil`（api 子树共享测试脚手架：日志捕获/测试引擎/
+  请求发起/kv 断言，internal 保证业务不可见）
+- 迁移对照：`api.OK/OKPage/Created/NoContent` → `response.*`；`api.Fail`/
+  `api.StatusFor`/`api.DefaultStatusMap` → `errresp.*`；`api.PageQuery` →
+  `request.PageQuery`；`api.HeaderXxx`/`api.CtxRuntimeContext`/
+  `api.RuntimeContextOf`/`api.TxIDOf`/`api.LangOf`/`api.WithActor` →
+  `reqctx.*`；`middleware.AccessLog/ErrorHandler/Recovery/FillRuntimeContext`
+  → `accesslog./errorhandler./recovery./runtimecontext.` 同名函数；
+  `middleware.WithStatusMap/WithMessageFunc` → `errorhandler.*`；
+  `middleware.WithSkipPaths` → `accesslog.WithSkipPaths`。函数签名与行为
+  零变化（纯结构重构）；examples/apifull 与 security-management 已随迁
+
 ### Changed（Breaking：分页对象更名与出参补 totalPage）
 
 - `paging.Query` → `paging.PageRequest`（请求对象贯穿 api/service/storage，

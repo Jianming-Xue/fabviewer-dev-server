@@ -1,4 +1,4 @@
-package middleware_test
+package accesslog_test
 
 import (
 	"net/http"
@@ -8,91 +8,83 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/fab-viewer/common-lib/api/middleware"
+	"github.com/fab-viewer/common-lib/api/internal/testutil"
+	"github.com/fab-viewer/common-lib/api/middleware/accesslog"
 	"github.com/fab-viewer/common-lib/common/logx"
 )
 
 func TestAccessLogRecords(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.AccessLog(log))
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(accesslog.AccessLog(log))
 	r.GET("/data", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
-	w := doGet(r, "/data")
+	w := testutil.DoGet(r, "/data")
 	require.Equal(t, http.StatusOK, w.Code)
 
-	records := log.snapshot()
+	records := log.Snapshot()
 	require.Len(t, records, 1, "恰好一条访问日志")
 	rec := records[0]
 	assert.Equal(t, "info", rec.Level)
 	assert.Equal(t, "access", rec.Msg)
 
 	for _, key := range []string{"method", "path", "status", "latency_ms", "client_ip", "tx_id", "tx_name", "user", "bytes"} {
-		_, ok := kvGet(rec.KV, key)
+		_, ok := testutil.KVGet(rec.KV, key)
 		assert.True(t, ok, "访问日志缺少字段 %s", key)
 	}
-	v, _ := kvGet(rec.KV, "method")
+	v, _ := testutil.KVGet(rec.KV, "method")
 	assert.Equal(t, http.MethodGet, v)
-	v, _ = kvGet(rec.KV, "path")
+	v, _ = testutil.KVGet(rec.KV, "path")
 	assert.Equal(t, "/data", v)
-	v, _ = kvGet(rec.KV, "status")
+	v, _ = testutil.KVGet(rec.KV, "status")
 	assert.Equal(t, http.StatusOK, v)
 }
 
 func TestAccessLogSkipsHealthz(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.AccessLog(log))
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(accesslog.AccessLog(log))
 	r.GET("/healthz", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/livez", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/readyz", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/api/data", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
-	doGet(r, "/healthz")
-	doGet(r, "/livez")
-	doGet(r, "/readyz")
-	doGet(r, "/api/data")
+	testutil.DoGet(r, "/healthz")
+	testutil.DoGet(r, "/livez")
+	testutil.DoGet(r, "/readyz")
+	testutil.DoGet(r, "/api/data")
 
-	records := log.snapshot()
+	records := log.Snapshot()
 	require.Len(t, records, 1, "默认跳过 healthz/livez/readyz")
-	assert.Equal(t, "/api/data", mustKVString(t, records[0].KV, "path"))
+	assert.Equal(t, "/api/data", testutil.MustKVString(t, records[0].KV, "path"))
 }
 
 func TestAccessLogWithSkipPaths(t *testing.T) {
-	log := &captureLogger{}
-	r := newTestEngine()
-	r.Use(middleware.AccessLog(log, middleware.WithSkipPaths("/ping", "/internal/metrics")))
+	log := &testutil.CaptureLogger{}
+	r := testutil.NewTestEngine()
+	r.Use(accesslog.AccessLog(log, accesslog.WithSkipPaths("/ping", "/internal/metrics")))
 	r.GET("/ping", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/internal/metrics", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/users", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
-	doGet(r, "/ping")
-	doGet(r, "/internal/metrics")
-	doGet(r, "/users")
+	testutil.DoGet(r, "/ping")
+	testutil.DoGet(r, "/internal/metrics")
+	testutil.DoGet(r, "/users")
 
-	records := log.snapshot()
+	records := log.Snapshot()
 	require.Len(t, records, 1)
-	assert.Equal(t, "/users", mustKVString(t, records[0].KV, "path"))
+	assert.Equal(t, "/users", testutil.MustKVString(t, records[0].KV, "path"))
 }
 
 func TestAccessLogNilLoggerUsesDefault(t *testing.T) {
-	capture := &captureLogger{}
+	capture := &testutil.CaptureLogger{}
 	logx.SetLogger(capture)
 	t.Cleanup(func() { logx.SetLogger(logx.Nop()) })
 
-	r := newTestEngine()
-	r.Use(middleware.AccessLog(nil)) // nil → logx.Default()
+	r := testutil.NewTestEngine()
+	r.Use(accesslog.AccessLog(nil)) // nil → logx.Default()
 	r.GET("/x", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
-	doGet(r, "/x")
-	assert.Len(t, capture.snapshot(), 1, "nil logger 应回退到 logx.Default()")
-}
-
-func mustKVString(t *testing.T, kv []any, key string) string {
-	t.Helper()
-	v, ok := kvGet(kv, key)
-	require.True(t, ok, "缺少字段 %s", key)
-	s, ok := v.(string)
-	require.True(t, ok, "字段 %s 应为字符串", key)
-	return s
+	testutil.DoGet(r, "/x")
+	assert.Len(t, capture.Snapshot(), 1, "nil logger 应回退到 logx.Default()")
 }

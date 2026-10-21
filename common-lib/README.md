@@ -28,7 +28,7 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 | `common/config`（配置加载：application.yml + 环境变量覆盖 + 段绑定） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/logx`（日志完整工具：Init + 包级函数，见下节） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/i18n`（多语言表能力，仅依赖标准库与 `common/rctx`） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `api`、`api/middleware` | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
+| `api/reqctx`（运行时上下文 gin 侧绑定）、`api/request`（请求参数解析）、`api/response`（统一响应体写回）、`api/errresp`（错误响应与状态码映射）、`api/middleware/*`（accesslog / errorhandler / recovery / runtimecontext 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/clickhouse`（`config`/`batch` 子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
 
 约定：
@@ -37,7 +37,7 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
   把存储层的 `Ping` 实现注入路由）。
 - **SDK 类型不越层**：`*gorm.DB`、`*opensearch.Client` 等只允许出现在业务存储层内部，
   存储层对上的接口签名用业务自定义类型 + `errs`/`paging` 类型。
-- **跨层共享靠依赖倒置**：接口层 `api.PageQuery(c)` 产出 `paging.PageRequest` 沿层传递，
+- **跨层共享靠依赖倒置**：接口层 `request.PageQuery(c)` 产出 `paging.PageRequest` 沿层传递，
   存储层消费 `q.Limit()/q.Offset()` 或 `search.WithPaging(q)`；`api` 与 `storage`
   互不感知，只在 `paging`/`errs` 相会。
 
@@ -147,20 +147,20 @@ r := gin.New()
 // 注册顺序固定：AccessLog → ErrorHandler → Recovery → RuntimeContext
 //（AccessLog 必须在 ErrorHandler 外层，否则错误路径记录的 status 不正确）
 r.Use(
-    middleware.AccessLog(log),
-    middleware.ErrorHandler(log),
-    middleware.Recovery(log),
-    middleware.FillRuntimeContext(),
+    accesslog.AccessLog(log),
+    errorhandler.ErrorHandler(log),
+    recovery.Recovery(log),
+    runtimecontext.FillRuntimeContext(),
 )
 
 r.GET("/api/users", func(c *gin.Context) {
-    q := api.PageQuery(c) // 解析 ?pageIndex=&pageSize=，非法值回退默认
+    q := request.PageQuery(c) // 解析 ?pageIndex=&pageSize=，非法值回退默认
     res, err := userRepo.List(c.Request.Context(), q) // 返回 paging.Pageable[User]
     if err != nil {
         _ = c.Error(err) // 交给 ErrorHandler 统一写回，不要自行写错误响应
         return
     }
-    api.OKPage(c, res)
+    response.OKPage(c, res)
 })
 ```
 
@@ -244,8 +244,8 @@ check-layers:
 
 ## 统一响应体契约（apiresponse）
 
-成功/失败同构（`api.Response`，五字段恒序列化）：**code 即 HTTP 状态码（数字）**，
-**txId 取自请求头 `txId`**（未携带时由 `middleware.FillRuntimeContext` 生成兜底，透传优先）。
+成功/失败同构（`response.Response`，五字段恒序列化）：**code 即 HTTP 状态码（数字）**，
+**txId 取自请求头 `txId`**（未携带时由 `runtimecontext.FillRuntimeContext` 生成兜底，透传优先）。
 
 ```json
 {"code":200,"success":true,"errMsg":"",
@@ -257,7 +257,7 @@ check-layers:
 {"code":400,"success":false,"errMsg":"参数 email 格式不正确","contents":null,"txId":"0c8f..."}
 ```
 
-- 分页请求参数为 `pageIndex`/`pageSize`（`api.PageQuery` 解析为
+- 分页请求参数为 `pageIndex`/`pageSize`（`request.PageQuery` 解析为
   `paging.PageRequest`；非法回退默认值 **1/10**，pageSize 上限
   `MaxPageSize=100`）；分页出参 **pageable**（`paging.Pageable`：
   pageIndex/pageSize/totalSize/**totalPage**/data）置于 `contents`，
@@ -268,7 +268,7 @@ check-layers:
 
 ### 请求运行时上下文（common/rctx.RuntimeContext）
 
-`middleware.FillRuntimeContext` 解析请求头五个字段
+`runtimecontext.FillRuntimeContext` 解析请求头五个字段
 （txId/txTime/txName/userName + 标准头 `Accept-Language`），包装为**整个请求
 期间**可用的上下文（`rctx.RuntimeContext`，**字段私有**：WithXxx 链式赋值、
 FromXxx 取值），两路注入（请求 context + gin）：
@@ -382,8 +382,8 @@ _ = c.Error(usererrors.NewConfirmDeleteUser(ctx).InsertArgs(u.Name))
 // → zh："确认删除用户 zhangsan 吗？"  en："confirm deleting user zhangsan?"
 
 // 4. 出口（ErrorHandler）直出 Message；模块码经 WithStatusMap 映射状态码
-r.Use(middleware.ErrorHandler(log,
-    middleware.WithStatusMap(map[bizerror.Code]int{
+r.Use(errorhandler.ErrorHandler(log,
+    errorhandler.WithStatusMap(map[bizerror.Code]int{
         usererrors.CodeUserNotFound: http.StatusNotFound,
     }), ...)
 ```
@@ -398,7 +398,7 @@ r.Use(middleware.ErrorHandler(log,
   模块默认语言 → key 原文
 - 多模块各自字典互不感知（无全局注册、无跨模块 key 冲突）；表并发安全
 
-业务错误码 → HTTP 状态码映射（`api.DefaultStatusMap`，可经 `middleware.WithStatusMap` 增补；
+业务错误码 → HTTP 状态码映射（`errresp.DefaultStatusMap`，可经 `errorhandler.WithStatusMap` 增补；
 映射结果同时决定 HTTP 状态与响应 code）：
 
 | bizerror.Code | HTTP（即响应 code） |

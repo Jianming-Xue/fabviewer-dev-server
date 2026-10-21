@@ -3,7 +3,8 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/fab-viewer/common-lib/api"
+	"github.com/fab-viewer/common-lib/api/request"
+	"github.com/fab-viewer/common-lib/api/response"
 	"github.com/fab-viewer/security-management/services"
 	"github.com/fab-viewer/security-management/usererrors"
 )
@@ -27,17 +28,17 @@ func (h *userHandler) create(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	api.Created(c, dto)
+	response.Created(c, dto)
 }
 
 // list GET /api/users?pageIndex=&pageSize=
 func (h *userHandler) list(c *gin.Context) {
-	page, err := h.users.List(c.Request.Context(), api.PageQuery(c))
+	page, err := h.users.List(c.Request.Context(), request.PageQuery(c))
 	if err != nil {
 		_ = c.Error(err)
 		return
 	}
-	api.OKPage(c, page)
+	response.OKPage(c, page)
 }
 
 // get GET /api/users/:id
@@ -47,7 +48,7 @@ func (h *userHandler) get(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	api.OK(c, dto)
+	response.OK(c, dto)
 }
 
 // delete DELETE /api/users/:id?confirm=true
@@ -61,5 +62,5 @@ func (h *userHandler) delete(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	api.NoContent(c)
+	response.NoContent(c)
 }

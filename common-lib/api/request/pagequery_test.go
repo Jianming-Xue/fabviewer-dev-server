@@ -1,13 +1,13 @@
-package api_test
+package request_test
 
 import (
-	"net/http"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/fab-viewer/common-lib/api"
+	"github.com/fab-viewer/common-lib/api/internal/testutil"
+	"github.com/fab-viewer/common-lib/api/request"
 	"github.com/fab-viewer/common-lib/common/paging"
 )
 
@@ -27,10 +27,10 @@ func TestPageQuery(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var got paging.PageRequest
-			r := newTestEngine()
-			r.GET("/q", func(c *gin.Context) { got = api.PageQuery(c) })
+			r := testutil.NewTestEngine()
+			r.GET("/q", func(c *gin.Context) { got = request.PageQuery(c) })
 
-			doRequest(t, r, http.MethodGet, "/q"+tt.query)
+			testutil.DoGet(r, "/q"+tt.query)
 
 			assert.Equal(t, tt.want, got)
 		})

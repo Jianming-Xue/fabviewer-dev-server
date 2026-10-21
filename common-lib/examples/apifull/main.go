@@ -33,8 +33,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/fab-viewer/common-lib/api"
-	"github.com/fab-viewer/common-lib/api/middleware"
+	"github.com/fab-viewer/common-lib/api/middleware/accesslog"
+	"github.com/fab-viewer/common-lib/api/middleware/errorhandler"
+	"github.com/fab-viewer/common-lib/api/middleware/recovery"
+	"github.com/fab-viewer/common-lib/api/middleware/runtimecontext"
+	"github.com/fab-viewer/common-lib/api/request"
+	"github.com/fab-viewer/common-lib/api/response"
 	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/logx"
 	"github.com/fab-viewer/common-lib/common/paging"
@@ -107,30 +111,30 @@ func main() {
 	// 注册顺序固定：AccessLog → ErrorHandler → Recovery → RuntimeContext
 	// AccessLog 最外层，保证错误路径记录的 status 是最终值
 	r.Use(
-		middleware.AccessLog(log),
-		middleware.ErrorHandler(log,
+		accesslog.AccessLog(log),
+		errorhandler.ErrorHandler(log,
 			// 模块自定义码需映射状态码（未映射按 500）
-			middleware.WithStatusMap(map[bizerror.Code]int{
+			errorhandler.WithStatusMap(map[bizerror.Code]int{
 				usererrors.CodeInvalidUserID:     http.StatusBadRequest,
 				usererrors.CodeUserNotFound:      http.StatusNotFound,
 				usererrors.CodeConfirmDeleteUser: http.StatusConflict,
 				ordererrors.CodeOrderNotFound:    http.StatusNotFound,
 			}),
 		),
-		middleware.Recovery(log),
-		middleware.FillRuntimeContext(),
+		recovery.Recovery(log),
+		runtimecontext.FillRuntimeContext(),
 	)
 
 	r.GET("/healthz", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
 	apiGroup := r.Group("/api")
 	apiGroup.GET("/users", func(c *gin.Context) {
-		res, err := repo.list(c.Request.Context(), api.PageQuery(c))
+		res, err := repo.list(c.Request.Context(), request.PageQuery(c))
 		if err != nil {
 			_ = c.Error(err)
 			return
 		}
-		api.OKPage(c, res)
+		response.OKPage(c, res)
 	})
 	apiGroup.GET("/users/:id", func(c *gin.Context) {
 		var req struct {
@@ -146,7 +150,7 @@ func main() {
 			_ = c.Error(err)
 			return
 		}
-		api.OK(c, u)
+		response.OK(c, u)
 	})
 	apiGroup.GET("/orders/:id", func(c *gin.Context) {
 		// 演示多模块：ordererrors 与 usererrors 各自维护语言字典、互不感知
@@ -209,7 +213,7 @@ func deleteUser(c *gin.Context, repo *userRepo) {
 			InsertArgs(u.Name))
 		return
 	}
-	api.NoContent(c)
+	response.NoContent(c)
 }
 
 func seedUsers(n int) []user {

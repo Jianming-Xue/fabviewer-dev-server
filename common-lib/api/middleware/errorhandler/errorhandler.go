@@ -1,4 +1,4 @@
-package middleware
+package errorhandler
 
 import (
 	"context"
@@ -10,7 +10,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"github.com/fab-viewer/common-lib/api"
+	"github.com/fab-viewer/common-lib/api/errresp"
+	"github.com/fab-viewer/common-lib/api/reqctx"
+	"github.com/fab-viewer/common-lib/api/response"
 	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/logx"
 )
@@ -51,7 +53,7 @@ func WithMessageFunc(fn func(*gin.Context, *bizerror.BizError) string) HandlerOp
 //   - context.Canceled → 499（客户端断开，只记日志）
 //   - 其余 → 500，根因只进日志不进响应
 //
-// 必须最先注册（最外层），c.Next() 返回后才能看到全部错误；
+// 必须注册在 accesslog 内层（c.Next() 返回后才能看到全部错误）；
 // 响应已写过时跳过（防双写）。log 为 nil 时使用 logx.Default()。
 func ErrorHandler(log logx.Logger, opts ...HandlerOption) gin.HandlerFunc {
 	cfg := newHandlerConfig(opts)
@@ -70,8 +72,8 @@ func ErrorHandler(log logx.Logger, opts ...HandlerOption) gin.HandlerFunc {
 
 // newHandlerConfig 以默认码表为底、逐项应用 Option。
 func newHandlerConfig(opts []HandlerOption) handlerConfig {
-	cfg := handlerConfig{statusMap: make(map[bizerror.Code]int, len(api.DefaultStatusMap))}
-	for code, status := range api.DefaultStatusMap {
+	cfg := handlerConfig{statusMap: make(map[bizerror.Code]int, len(errresp.DefaultStatusMap))}
+	for code, status := range errresp.DefaultStatusMap {
 		cfg.statusMap[code] = status
 	}
 	for _, opt := range opts {
@@ -91,21 +93,21 @@ func writeError(c *gin.Context, err error, cfg handlerConfig, log logx.Logger) {
 	}
 	switch {
 	case errors.Is(err, gorm.ErrRecordNotFound), errors.Is(err, sql.ErrNoRows):
-		r := api.NewResponse(c, http.StatusNotFound, "resource not found")
-		api.Write(c, http.StatusNotFound, &r)
+		r := response.NewResponse(c, http.StatusNotFound, "resource not found")
+		response.Write(c, http.StatusNotFound, &r)
 	case errors.Is(err, context.Canceled):
 		log.Info("client canceled request",
-			"path", c.Request.URL.Path, "tx_id", api.TxIDOf(c))
-		r := api.NewResponse(c, api.StatusClientClosedRequest, "client canceled request")
-		api.Write(c, api.StatusClientClosedRequest, &r)
+			"path", c.Request.URL.Path, "tx_id", reqctx.TxIDOf(c))
+		r := response.NewResponse(c, errresp.StatusClientClosedRequest, "client canceled request")
+		response.Write(c, errresp.StatusClientClosedRequest, &r)
 	default:
 		log.Error("unhandled error",
 			"err", err.Error(),
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
-			"tx_id", api.TxIDOf(c))
-		r := api.NewResponse(c, http.StatusInternalServerError, "internal error")
-		api.Write(c, http.StatusInternalServerError, &r)
+			"tx_id", reqctx.TxIDOf(c))
+		r := response.NewResponse(c, http.StatusInternalServerError, "internal error")
+		response.Write(c, http.StatusInternalServerError, &r)
 	}
 }
 
@@ -129,7 +131,7 @@ func writeBizError(c *gin.Context, e *bizerror.BizError, cfg handlerConfig, log 
 		"details", fmt.Sprint(e.Details),
 		"method", c.Request.Method,
 		"path", c.Request.URL.Path,
-		"tx_id", api.TxIDOf(c))
-	r := api.NewResponse(c, status, message)
-	api.Write(c, status, &r)
+		"tx_id", reqctx.TxIDOf(c))
+	r := response.NewResponse(c, status, message)
+	response.Write(c, status, &r)
 }
