@@ -1,3 +1,13 @@
 .claude/
 **/systemlogs/
 *.log
+
+# Go 构建产物（示例冒烟编译时可能落在模块根）
+/oracleproc
+/apifull
+/chbatch
+/ossearch
+common-lib/oracleproc
+common-lib/apifull
+common-lib/chbatch
+common-lib/ossearch
