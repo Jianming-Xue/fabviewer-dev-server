@@ -29,8 +29,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fab-viewer/common-lib/common/config"
 	"github.com/fab-viewer/common-lib/common/logx"
-	"github.com/fab-viewer/common-lib/storage/oracle/config"
+	oracleconfig "github.com/fab-viewer/common-lib/storage/oracle/config"
 	"github.com/fab-viewer/common-lib/storage/oracle/conn"
 	"github.com/fab-viewer/security-management/api"
 	"github.com/fab-viewer/security-management/app"
@@ -40,20 +41,19 @@ import (
 )
 
 func main() {
-	log, closeLog, err := logx.New(logx.Config{
-		Stdout: true,
-		File: &logx.FileConfig{
-			Path:       "systemlogs/security-management.log", // 目录自动创建
-			MaxSizeMB:  100,
-			MaxBackups: 200,
-		},
-	})
+	// 配置与日志：application.yml（路径可经 security_CFG 环境变量覆盖，
+	// 叶子可经 security.* 环境变量覆盖）→ log 段双出口（console+file）
+	cfgMap, err := config.LoadConfig("security")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	defer closeLog()
-	logx.SetDefault(log)
+	log, closeLog, err := logx.Init(cfgMap)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer closeLog() // Init 已落位全局出口，包级 logx.Info 直接可用
 
 	userRepo, txm, err := openStorage(log)
 	if err != nil {
@@ -98,7 +98,7 @@ func main() {
 func openStorage(log logx.Logger) (domain.UserRepository, domain.TxManager, error) {
 	if storageMode() == "oracle" {
 		port, _ := strconv.Atoi(envOr("SM_DB_PORT", "1521"))
-		cfg := config.Config{
+		cfg := oracleconfig.Config{
 			User:        os.Getenv("SM_DB_USER"),
 			Password:    os.Getenv("SM_DB_PASSWORD"),
 			Host:        os.Getenv("SM_DB_HOST"),

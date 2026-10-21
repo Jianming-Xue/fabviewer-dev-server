@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/storage/oracle/config"
 )
 
@@ -255,7 +255,7 @@ func demoTxIntegration(t *testing.T, ctx context.Context, db *DB) {
 	t.Helper()
 	err := db.GORM().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&gadgetIT{ID: 99, Name: "tx-row"}).Error; err != nil {
-			return fverr.NewError(fverr.CodeDB, "事务内 Create").AttachError(err, nil)
+			return bizerror.NewError(bizerror.CodeDB, "事务内 Create").AttachError(err, nil)
 		}
 		ex, err := FromGorm(tx)
 		if err != nil {
@@ -266,7 +266,7 @@ func demoTxIntegration(t *testing.T, ctx context.Context, db *DB) {
 			return err
 		}
 		if total != 102 { // 1 + 2 + 99，过程与 DML 同事务才可见
-			return fverr.NewError(fverr.CodeDB, "事务内过程聚合非预期: {0}", total)
+			return bizerror.NewError(bizerror.CodeDB, "事务内过程聚合非预期: {0}", total)
 		}
 		return nil
 	})

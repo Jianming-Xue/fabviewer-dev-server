@@ -29,7 +29,7 @@ func NewUserRepo() *UserRepo {
 // Create 生成雪花 ID 与审计字段（操作者取运行时上下文）后写入。
 func (r *UserRepo) Create(ctx context.Context, u *domain.User) error {
 	now := r.clock()
-	who := rctx.GetRuntimeContext(ctx).User
+	who := rctx.GetRuntimeContext(ctx).FromUser()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if u.ID == "" {
@@ -67,7 +67,7 @@ func (r *UserRepo) FindByUsername(_ context.Context, username string) (*domain.U
 }
 
 // List 按创建时间稳定排序分页。
-func (r *UserRepo) List(_ context.Context, q paging.Query) (paging.Pageable[domain.User], error) {
+func (r *UserRepo) List(_ context.Context, q paging.PageRequest) (paging.Pageable[domain.User], error) {
 	q = q.Normalize()
 	r.mu.RLock()
 	all := make([]domain.User, 0, len(r.byID))

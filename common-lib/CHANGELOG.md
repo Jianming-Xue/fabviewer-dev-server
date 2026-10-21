@@ -6,6 +6,76 @@
 
 ## [Unreleased]
 
+### Changed（Breaking：分页对象更名与出参补 totalPage）
+
+- `paging.Query` → `paging.PageRequest`（请求对象贯穿 api/service/storage，
+  命名对齐"请求"语义）；默认值调整：pageSize 默认 **10**（原 20）、
+  pageIndex 默认 1 不变；每页硬上限更名 `MaxPageSize` 且降为 **100**
+  （原 MaxSize 500）
+- `paging.Pageable` 出参新增 **totalPage** 字段（totalSize/pageSize 向上
+  取整：不整除进一、整除不加，totalSize=0 时为 0）；字段顺序对齐
+  pageIndex/pageSize/totalSize/totalPage/data——统一响应体 contents 的
+  分页 wire 格式随之变化（Breaking）
+- 迁移对照：`paging.Query` → `paging.PageRequest`、`paging.MaxSize` →
+  `paging.MaxPageSize`；`Normalize/Limit/Offset/NewPageable` 签名不变；
+  api.PageQuery、opensearch.search.WithPaging 随迁
+
+### Changed（Breaking：actortx 并入 rctx 与 RuntimeContext 私有化）
+
+- `common/actortx` 包删除：操作者（Actor）本质即 RuntimeContext.User，
+  原双通道（FillRuntimeContext 里 userName 同时注入 rctx 与 actortx）
+  合并为一条——oracle BasePO 审计钩子直接从
+  `rctx.GetRuntimeContext(ctx).FromUser()` 取值；`api.WithActor` 内部改
+  经 rctx 派生 WithUser
+- `RuntimeContext` 字段全部私有：`WithID/WithTime/WithName/WithUser/
+  WithLang` 链式赋值（值语义副本，同 Config.WithDefaults 模式）、
+  `FromID/FromTime/FromName/FromUser/FromLang` 取值；
+  SetRuntimeContext/GetRuntimeContext 不变
+- 迁移对照：`actortx.SetActorContext(ctx, id)` →
+  `rctx.SetRuntimeContext(ctx, rctx.RuntimeContext{}.WithUser(id))`；
+  `rc.ID` 等字段访问 → `rc.FromID()` 等
+
+### Changed（Breaking：统一错误更名 BizError）
+
+- `common/fverr` 更名为 `common/bizerror`，类型 `FvError` → `BizError`
+  （2026-10-21 拍板：体系本身不变，仅更名）；`Code`/`NewError`/`InsertArgs`/
+  `AttachError`/`IsError`/`From` 等符号不变，业务方批量替换 import 路径与
+  类型名即可（`gofmt -r` 或 sed 一次跑完）；cmd/i18nerr 生成器同步更名，
+  已有模块重跑 `go generate` 零漂移（examples 与 security-management
+  已随迁）
+
+### Changed（Breaking：日志工具重构为配置驱动）
+
+- `common/logx` 重构为**组件自治 + 配置驱动**（2026-10-21 拍板）：公开 API 收敛
+  为 `Init(m map[string]any) (Logger, func(), error)`——读取配置 log 段（配置
+  结构体全部私有，不再对外暴露），成功后自动落位全局出口；新增包级记录函数
+  `Debug/Info/Warn/Error(msg, kv...)`，业务零持有日志对象；`SetDefault` 更名
+  `SetLogger`（测试注入与 Init 落位共用）
+- **出口收敛为 console/file 两种**：每出口 `enabled/level/format`（format 取
+  json（默认）|console，非法取值静默按 json）；等级链：出口 level →
+  log.level → info 静默兜底；两个出口均未启用（或缺失 log 段）返回
+  `ErrNoLogComponent`
+- **文件滚动从自研编号方案（log、log.1 ... log.N）换为 lumberjack**
+  （推翻 2026-10-20 编号滚动拍板）：新增 `maxAge`（按天清理备份）、
+  `compress`（旧备份 gzip）、`localTime`（备份文件名时间戳时区，默认 true）；
+  默认值 path=systemlogs/server.log、maxSize=100（兆）、maxBackups=100、
+  maxAge=30、compress=false；配置 key 首字母小写 camelCase
+- **远程出口整体移除**：`Sink` 接口、异步批量缓冲 core、`RemoteEncoder`、
+  `storage/opensearch/logsink` 包删除；自定义格式注入机制（`Encoder` 字段、
+  `LineEncoder`、`Formatter`、`Rec`）随 format 预置化一并删除；历史 slog
+  适配器 `NewSlog`（v0.1.0 最小接口时代产物）一并删除，示例 oracleproc 改用
+  `logx.Init`
+- 日志行携带 **caller 调用位置**：`AddCaller + AddCallerSkip(1)` 跳过
+  logx 包装层；包级函数经 zap 实例直调（不经接口中转），caller 指向业务
+  调用行；`SetLogger` 注入自定义实现时包级函数自动降级走接口
+- Init 内用 `common/config` 的 `ValidateIsBoolean/IsNumber` 对存在的键做断言式
+  校验（宽松规则，环境变量覆盖产生的字符串放行）、`GetSection` 绑定私有配置
+- 新增依赖 `gopkg.in/natefinch/lumberjack.v2`（depguard 白名单固化）；
+  迁移对照：`logx.New(Config{...})` → `logx.Init(cfgMap)`（application.yml 的
+  log 段）、`logx.SetDefault` → `logx.SetLogger`；security-management 已随迁
+  （新增根目录 application.yml，cmd/server 经 `config.LoadConfig("security")`
+  + `logx.Init` 装配，端到端实测通过）
+
 ### Changed（Breaking：存储层分包）
 
 - `storage/oracle` 按功能拆四包：`config`（Config/WithDefaults/Validate/BuildDSN）、
@@ -25,6 +95,22 @@
 
 ### Added
 
+- 配置加载能力 `common/config`（2026-10-21 拍板：每业务服务自维护
+  application.yml，库只提供加载/读取/校验能力，不内置任何配置项）：
+  - `LoadConfig(appName)`：文件路径取环境变量 `{appName}_CFG`（缺省为工作
+    目录下 application.yml）；仅支持 yml/yaml/json，其余报 `ErrInvalidConfigFile`；
+    解析为嵌套 `map[string]any` 后逐叶子应用环境变量覆盖（叶子路径点连接加
+    appName 前缀，如 `security.log.level` 覆盖 log.level），未设置保留原值，
+    覆盖值为字符串原样进 map、类型转换推迟到绑定阶段
+  - `GetSection[T](m, section)`：点分下钻取子 map 绑定到目标结构体
+    （mapstructure tag 优先，无 tag 字段按完整字段名忽略大小写；开启
+    WeaklyTypedInput），未命中返回 `ErrSectionNotFound`；`Get(m, path)`
+    返回原始子 map，未命中为 nil 不报错
+  - `ValidateIsEmpty/IsNumber/IsBoolean(m, key)`：断言式校验，宽松规则与
+    绑定一致（字符串 "200" 算数字、"true" 算布尔，与环境变量覆盖机制兼容），
+    分别返回 `ErrValueEmpty`/`ErrInvalidNumberValue`/`ErrInvalidBoolValue`
+  - 新增依赖 `go-viper/mapstructure/v2`（depguard 白名单固化）；
+    `go.yaml.in/yaml/v3` 由 indirect 转直接依赖
 - 日志升级为完整工具：`common/logx` 引擎改为 **zap**（业界事实标准），
   `logx.New(Config)` 出口可组合——标准输出 / 文件（**自研编号滚动**：
   log、log.1、log.2 ... log.N 按大小触发，保留 N 份）/ 远程批量出口

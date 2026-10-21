@@ -7,7 +7,7 @@ import (
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 )
 
 func TestCursorLifecycle(t *testing.T) {
@@ -50,9 +50,9 @@ func TestCursorScanMismatch(t *testing.T) {
 	var n int
 	err = cur.Scan(&n)
 	assert.Error(t, err)
-	e, ok := fverr.From(err)
+	e, ok := bizerror.From(err)
 	assert.True(t, ok)
-	assert.Equal(t, fverr.CodeDB, e.Code)
+	assert.Equal(t, bizerror.CodeDB, e.Code)
 	assert.NoError(t, cur.Close())
 	assert.NoError(t, mock.ExpectationsWereMet())
 }

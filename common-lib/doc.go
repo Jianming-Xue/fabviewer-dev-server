@@ -7,7 +7,7 @@
 //	接口访问层  → api、api/middleware（仅此层可 import，Gin 依赖从这里开始）
 //	存储层      → storage/oracle、storage/clickhouse、storage/opensearch、
 //	              storage/snowflake（ID 生成）、storage 根（PoolConfig）
-//	所有层      → common/fverr、common/paging、common/actortx
+//	所有层      → common/bizerror、common/paging、common/rctx（操作者并入 RuntimeContext.User）
 //	              （零三方依赖的跨层包）、common/rctx（请求运行时上下文
 //	              RuntimeContext）、common/i18n（错误消息国际化，只提供
 //	              能力、译文业务自注册）

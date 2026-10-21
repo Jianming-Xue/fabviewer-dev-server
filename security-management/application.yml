@@ -1,0 +1,15 @@
+# security-management 服务配置（appName=security）
+# 环境变量覆盖：security.<段>.<键>=<值>（如 security.log.file.maxSize=200）
+# 配置文件路径覆盖：环境变量 security_CFG=<路径>（缺省为本文件）
+
+log:
+  level: info
+  console:
+    enabled: true
+    format: console
+  file:
+    enabled: true
+    format: json
+    path: systemlogs/security-management.log
+    maxSize: 100
+    maxBackups: 200

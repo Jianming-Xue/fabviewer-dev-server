@@ -158,12 +158,12 @@ func TestT(t *testing.T) {
 	b := newTestBundles()
 
 	t.Run("从请求上下文取语言", func(t *testing.T) {
-		ctx := rctx.SetRuntimeContext(context.Background(), rctx.RuntimeContext{Lang: "zh-CN"})
+		ctx := rctx.SetRuntimeContext(context.Background(), rctx.RuntimeContext{}.WithLang("zh-CN"))
 		assert.Equal(t, "用户不存在", b.T(ctx, "user not found"))
 	})
 
 	t.Run("带参数格式化", func(t *testing.T) {
-		ctx := rctx.SetRuntimeContext(context.Background(), rctx.RuntimeContext{Lang: "zh-CN"})
+		ctx := rctx.SetRuntimeContext(context.Background(), rctx.RuntimeContext{}.WithLang("zh-CN"))
 		assert.Equal(t, "用户 7 不存在", b.T(ctx, "user {0} not found", 7))
 	})
 

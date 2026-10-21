@@ -11,13 +11,13 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/fab-viewer/common-lib/api"
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/logx"
 )
 
 type handlerConfig struct {
-	statusMap map[fverr.Code]int
-	messageFn func(*gin.Context, *fverr.FvError) string
+	statusMap map[bizerror.Code]int
+	messageFn func(*gin.Context, *bizerror.BizError) string
 }
 
 // HandlerOption 配置 ErrorHandler 中间件。
@@ -26,7 +26,7 @@ type HandlerOption func(*handlerConfig)
 // WithStatusMap 以传入映射增补/覆盖默认错误码 → HTTP 状态码表
 // （用于业务模块错误码，如 {usererrors.CodeUserDisabled: http.StatusForbidden}）；
 // 未映射的自定义码仍按 500 处理。
-func WithStatusMap(m map[fverr.Code]int) HandlerOption {
+func WithStatusMap(m map[bizerror.Code]int) HandlerOption {
 	return func(cfg *handlerConfig) {
 		for code, status := range m {
 			cfg.statusMap[code] = status
@@ -35,9 +35,9 @@ func WithStatusMap(m map[fverr.Code]int) HandlerOption {
 }
 
 // WithMessageFunc 改写响应 errMsg（逃生舱口，如统一脱敏）；返回空串时保留
-// 原 errMsg。FvError 的 Message 在创建时已按请求语言翻译（fverr.New 查模块
+// 原 errMsg。BizError 的 Message 在创建时已按请求语言翻译（bizerror.New 查模块
 // 字典 + InsertArgs 插参），出口不做翻译。
-func WithMessageFunc(fn func(*gin.Context, *fverr.FvError) string) HandlerOption {
+func WithMessageFunc(fn func(*gin.Context, *bizerror.BizError) string) HandlerOption {
 	return func(cfg *handlerConfig) {
 		cfg.messageFn = fn
 	}
@@ -45,7 +45,7 @@ func WithMessageFunc(fn func(*gin.Context, *fverr.FvError) string) HandlerOption
 
 // ErrorHandler 统一消费 handler 中经 c.Error(err) 上报的错误并写回统一响应体：
 //
-//   - *fverr.FvError：errMsg 直接输出 Message（创建时已翻译，出口零翻译），
+//   - *bizerror.BizError：errMsg 直接输出 Message（创建时已翻译，出口零翻译），
 //     按码表映射状态码；Code 与 Details 不出参，随 business error 日志留痕
 //   - gorm.ErrRecordNotFound / sql.ErrNoRows → 404
 //   - context.Canceled → 499（客户端断开，只记日志）
@@ -70,7 +70,7 @@ func ErrorHandler(log logx.Logger, opts ...HandlerOption) gin.HandlerFunc {
 
 // newHandlerConfig 以默认码表为底、逐项应用 Option。
 func newHandlerConfig(opts []HandlerOption) handlerConfig {
-	cfg := handlerConfig{statusMap: make(map[fverr.Code]int, len(api.DefaultStatusMap))}
+	cfg := handlerConfig{statusMap: make(map[bizerror.Code]int, len(api.DefaultStatusMap))}
 	for code, status := range api.DefaultStatusMap {
 		cfg.statusMap[code] = status
 	}
@@ -80,13 +80,13 @@ func newHandlerConfig(opts []HandlerOption) handlerConfig {
 	return cfg
 }
 
-// writeError 将错误写回统一响应体：FvError 按码表映射状态码并直接输出
+// writeError 将错误写回统一响应体：BizError 按码表映射状态码并直接输出
 // Message，其余按哨兵错误（not found / canceled）或兜底 500 处理，
 // 根因只进日志。
 func writeError(c *gin.Context, err error, cfg handlerConfig, log logx.Logger) {
-	var e *fverr.FvError
+	var e *bizerror.BizError
 	if errors.As(err, &e) {
-		writeFvError(c, e, cfg, log)
+		writeBizError(c, e, cfg, log)
 		return
 	}
 	switch {
@@ -109,10 +109,10 @@ func writeError(c *gin.Context, err error, cfg handlerConfig, log logx.Logger) {
 	}
 }
 
-// writeFvError 处理 *fverr.FvError：状态码取码表（未映射按 500，code 即状态码），
+// writeBizError 处理 *bizerror.BizError：状态码取码表（未映射按 500，code 即状态码），
 // errMsg 直接输出 e.Message（不翻译，可被 messageFn 改写）；Details 不出参，
 // 随 business error 日志留痕。
-func writeFvError(c *gin.Context, e *fverr.FvError, cfg handlerConfig, log logx.Logger) {
+func writeBizError(c *gin.Context, e *bizerror.BizError, cfg handlerConfig, log logx.Logger) {
 	status, ok := cfg.statusMap[e.Code]
 	if !ok {
 		status = http.StatusInternalServerError

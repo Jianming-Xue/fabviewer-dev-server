@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/logx"
 	"github.com/fab-viewer/common-lib/storage/oracle/config"
 )
@@ -83,12 +83,12 @@ func Open(ctx context.Context, cfg config.Config, opts ...Option) (*DB, error) {
 		Logger:         newGormLogger(o.log, cfg.LogLevel, time.Duration(cfg.SlowSQLMs)*time.Millisecond),
 	})
 	if err != nil {
-		return nil, fverr.NewError(fverr.CodeDB, "oracle.Open user={0} connectString={1}", cfg.User, cfg.ConnectString()).AttachError(err, nil)
+		return nil, bizerror.NewError(bizerror.CodeDB, "oracle.Open user={0} connectString={1}", cfg.User, cfg.ConnectString()).AttachError(err, nil)
 	}
 	sqlDB, err := gormDB.DB()
 	if err != nil {
 		closeGorm(gormDB)
-		return nil, fverr.NewError(fverr.CodeDB, "oracle.Open 提取 *sql.DB").AttachError(err, nil)
+		return nil, bizerror.NewError(bizerror.CodeDB, "oracle.Open 提取 *sql.DB").AttachError(err, nil)
 	}
 	sqlDB.SetMaxOpenConns(cfg.Pool.MaxOpenConns)
 	sqlDB.SetMaxIdleConns(cfg.Pool.MaxIdleConns)
@@ -112,14 +112,14 @@ func (db *DB) SQL() *sql.DB { return db.sqlDB }
 // Ping 用 SELECT 1 FROM DUAL 探活，受 ctx 控制并及时返回底层错误。
 func (db *DB) Ping(ctx context.Context) error {
 	if db == nil || db.sqlDB == nil {
-		return fverr.NewError(fverr.CodeValidation, "oracle.Ping db 未初始化")
+		return bizerror.NewError(bizerror.CodeValidation, "oracle.Ping db 未初始化")
 	}
 	var one int
 	if err := db.sqlDB.QueryRowContext(ctx, pingQuery).Scan(&one); err != nil {
-		return fverr.NewError(fverr.CodeDB, "oracle.Ping {0}", pingQuery).AttachError(err, nil)
+		return bizerror.NewError(bizerror.CodeDB, "oracle.Ping {0}", pingQuery).AttachError(err, nil)
 	}
 	if one != 1 {
-		return fverr.NewError(fverr.CodeDB, "oracle.Ping {0} 返回非预期值 {1}", pingQuery, one)
+		return bizerror.NewError(bizerror.CodeDB, "oracle.Ping {0} 返回非预期值 {1}", pingQuery, one)
 	}
 	return nil
 }
@@ -130,7 +130,7 @@ func (db *DB) Close() error {
 		return nil
 	}
 	if err := db.sqlDB.Close(); err != nil {
-		return fverr.NewError(fverr.CodeDB, "oracle.Close").AttachError(err, nil)
+		return bizerror.NewError(bizerror.CodeDB, "oracle.Close").AttachError(err, nil)
 	}
 	return nil
 }

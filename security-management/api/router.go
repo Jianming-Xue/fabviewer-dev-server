@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/fab-viewer/common-lib/api/middleware"
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/logx"
 	"github.com/fab-viewer/security-management/services"
 	"github.com/fab-viewer/security-management/usererrors"
@@ -22,7 +22,7 @@ func NewRouter(log logx.Logger, users services.UserService) *gin.Engine {
 		middleware.AccessLog(log),
 		middleware.ErrorHandler(log,
 			// 模块错误码 → HTTP 状态码
-			middleware.WithStatusMap(map[fverr.Code]int{
+			middleware.WithStatusMap(map[bizerror.Code]int{
 				usererrors.CodeUserNotFound:      http.StatusNotFound,
 				usererrors.CodeUserAlreadyExists: http.StatusConflict,
 				usererrors.CodeConfirmDeleteUser: http.StatusConflict,

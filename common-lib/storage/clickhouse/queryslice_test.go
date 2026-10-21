@@ -10,17 +10,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 )
 
 // fakeRows 是手写的 driver.Rows 替身：由闭包驱动行为，模拟 SDK 的
 // Next/ScanStruct（ch tag 填充）/Err/Close 语义。
-// asDBError 断言 err 是 fverr.CodeDB 并返回它（与 batch 子包各自持有一份）。
-func asDBError(t *testing.T, err error) *fverr.FvError {
+// asDBError 断言 err 是 bizerror.CodeDB 并返回它（与 batch 子包各自持有一份）。
+func asDBError(t *testing.T, err error) *bizerror.BizError {
 	t.Helper()
-	var e *fverr.FvError
+	var e *bizerror.BizError
 	require.ErrorAs(t, err, &e)
-	assert.Equal(t, fverr.CodeDB, e.Code)
+	assert.Equal(t, bizerror.CodeDB, e.Code)
 	return e
 }
 

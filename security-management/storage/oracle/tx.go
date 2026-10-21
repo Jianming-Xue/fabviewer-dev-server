@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/storage/oracle/conn"
 )
 
@@ -27,7 +27,7 @@ func (m *TxManager) WithTx(ctx context.Context, fn func(ctx context.Context) err
 		_ = tx
 		return fn(ctx)
 	}); err != nil {
-		return fverr.NewError(fverr.CodeDB, "tx commit/rollback").AttachError(err, nil)
+		return bizerror.NewError(bizerror.CodeDB, "tx commit/rollback").AttachError(err, nil)
 	}
 	return nil
 }

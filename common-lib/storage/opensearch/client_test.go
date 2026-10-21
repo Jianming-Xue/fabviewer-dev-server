@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/storage/opensearch/config"
 )
 
@@ -25,15 +25,15 @@ func TestOpen(t *testing.T) {
 	t.Run("空 Addrs 拒绝", func(t *testing.T) {
 		_, err := Open(config.Config{})
 		require.Error(t, err)
-		require.ErrorIs(t, err, fverr.ErrValidation)
+		require.ErrorIs(t, err, bizerror.ErrValidation)
 	})
 
 	t.Run("非法地址", func(t *testing.T) {
 		_, err := Open(config.Config{Addrs: []string{"://bad-address"}})
 		require.Error(t, err)
-		e, ok := fverr.From(err)
+		e, ok := bizerror.From(err)
 		require.True(t, ok)
-		assert.Equal(t, fverr.CodeDB, e.Code)
+		assert.Equal(t, bizerror.CodeDB, e.Code)
 	})
 }
 
@@ -75,7 +75,7 @@ func TestIndex(t *testing.T) {
 		ft := &fakeTransport{}
 		cli := newFakeClient(t, ft)
 		err := cli.Index(context.Background(), "", "o-1", orderDoc{})
-		require.ErrorIs(t, err, fverr.ErrValidation)
+		require.ErrorIs(t, err, bizerror.ErrValidation)
 		assert.Equal(t, 0, ft.requestCount(), "参数校验失败不应发起请求")
 	})
 
@@ -83,7 +83,7 @@ func TestIndex(t *testing.T) {
 		ft := &fakeTransport{}
 		cli := newFakeClient(t, ft)
 		err := cli.Index(context.Background(), "orders", "o-1", nil)
-		require.ErrorIs(t, err, fverr.ErrValidation)
+		require.ErrorIs(t, err, bizerror.ErrValidation)
 		assert.Equal(t, 0, ft.requestCount())
 	})
 
@@ -91,7 +91,7 @@ func TestIndex(t *testing.T) {
 		ft := &fakeTransport{}
 		cli := newFakeClient(t, ft)
 		err := cli.Index(context.Background(), "orders", "o-1", map[string]any{"fn": func() {}})
-		require.ErrorIs(t, err, fverr.ErrValidation)
+		require.ErrorIs(t, err, bizerror.ErrValidation)
 		assert.Equal(t, 0, ft.requestCount())
 	})
 
@@ -103,9 +103,9 @@ func TestIndex(t *testing.T) {
 		cli := newFakeClient(t, ft)
 		err := cli.Index(context.Background(), "orders", "o-1", orderDoc{})
 		require.Error(t, err)
-		e, ok := fverr.From(err)
+		e, ok := bizerror.From(err)
 		require.True(t, ok)
-		assert.Equal(t, fverr.CodeValidation, e.Code)
+		assert.Equal(t, bizerror.CodeValidation, e.Code)
 		assert.Contains(t, err.Error(), "mapper_parsing_exception: failed to parse")
 		assert.Contains(t, err.Error(), "opensearch.Index index=orders id=o-1")
 		ft.assertAllClosed(t)
@@ -115,7 +115,7 @@ func TestIndex(t *testing.T) {
 		ft := &fakeTransport{status: http.StatusInternalServerError, body: `{"error":"internal","status":500}`}
 		cli := newFakeClient(t, ft)
 		err := cli.Index(context.Background(), "orders", "o-1", orderDoc{})
-		require.ErrorIs(t, err, fverr.ErrDB)
+		require.ErrorIs(t, err, bizerror.ErrDB)
 		ft.assertAllClosed(t)
 	})
 }
@@ -164,7 +164,7 @@ func TestGet(t *testing.T) {
 		ft := &fakeTransport{status: http.StatusUnauthorized, body: `{"error":"unauthorized","status":401}`}
 		cli := newFakeClient(t, ft)
 		_, err := Get[orderDoc](ctx, cli, "orders", "o-1", new(orderDoc))
-		require.ErrorIs(t, err, fverr.ErrUnauthorized)
+		require.ErrorIs(t, err, bizerror.ErrUnauthorized)
 		ft.assertAllClosed(t)
 	})
 
@@ -172,7 +172,7 @@ func TestGet(t *testing.T) {
 		ft := &fakeTransport{status: http.StatusInternalServerError, body: `{"error":"boom","status":500}`}
 		cli := newFakeClient(t, ft)
 		_, err := Get[orderDoc](ctx, cli, "orders", "o-1", new(orderDoc))
-		require.ErrorIs(t, err, fverr.ErrDB)
+		require.ErrorIs(t, err, bizerror.ErrDB)
 		assert.Contains(t, err.Error(), "opensearch.Get index=orders id=o-1")
 		ft.assertAllClosed(t)
 	})
@@ -181,7 +181,7 @@ func TestGet(t *testing.T) {
 		ft := &fakeTransport{failErr: errors.New("connection refused")}
 		cli := newFakeClient(t, ft)
 		_, err := Get[orderDoc](ctx, cli, "orders", "o-1", new(orderDoc))
-		require.ErrorIs(t, err, fverr.ErrDB)
+		require.ErrorIs(t, err, bizerror.ErrDB)
 		assert.Contains(t, err.Error(), "connection refused")
 	})
 
@@ -190,7 +190,7 @@ func TestGet(t *testing.T) {
 			"found": true, "_source": {"id": 123, "title": "t"}}`}
 		cli := newFakeClient(t, ft)
 		found, err := Get[orderDoc](ctx, cli, "orders", "o-1", new(orderDoc))
-		require.ErrorIs(t, err, fverr.ErrDB)
+		require.ErrorIs(t, err, bizerror.ErrDB)
 		assert.True(t, found, "文档本身已命中，仅类型不匹配")
 		ft.assertAllClosed(t)
 	})
@@ -199,11 +199,11 @@ func TestGet(t *testing.T) {
 		ft := &fakeTransport{}
 		cli := newFakeClient(t, ft)
 		_, err := Get[orderDoc](ctx, cli, "", "o-1", new(orderDoc))
-		require.ErrorIs(t, err, fverr.ErrValidation)
+		require.ErrorIs(t, err, bizerror.ErrValidation)
 		_, err = Get[orderDoc](ctx, cli, "orders", "", new(orderDoc))
-		require.ErrorIs(t, err, fverr.ErrValidation)
+		require.ErrorIs(t, err, bizerror.ErrValidation)
 		_, err = Get[orderDoc](ctx, cli, "orders", "o-1", nil)
-		require.ErrorIs(t, err, fverr.ErrValidation)
+		require.ErrorIs(t, err, bizerror.ErrValidation)
 		assert.Equal(t, 0, ft.requestCount())
 	})
 }
@@ -235,7 +235,7 @@ func TestDelete(t *testing.T) {
 		ft := &fakeTransport{status: http.StatusBadRequest, body: `{"error":"bad","status":400}`}
 		cli := newFakeClient(t, ft)
 		err := cli.Delete(ctx, "orders", "o-1")
-		require.ErrorIs(t, err, fverr.ErrValidation)
+		require.ErrorIs(t, err, bizerror.ErrValidation)
 		ft.assertAllClosed(t)
 	})
 
@@ -243,7 +243,7 @@ func TestDelete(t *testing.T) {
 		ft := &fakeTransport{status: http.StatusInternalServerError, body: `{"error":"boom","status":500}`}
 		cli := newFakeClient(t, ft)
 		err := cli.Delete(ctx, "orders", "o-1")
-		require.ErrorIs(t, err, fverr.ErrDB)
+		require.ErrorIs(t, err, bizerror.ErrDB)
 		assert.Contains(t, err.Error(), "opensearch.Delete index=orders id=o-1")
 		ft.assertAllClosed(t)
 	})
@@ -252,14 +252,14 @@ func TestDelete(t *testing.T) {
 		ft := &fakeTransport{failErr: errors.New("dial tcp: refused")}
 		cli := newFakeClient(t, ft)
 		err := cli.Delete(ctx, "orders", "o-1")
-		require.ErrorIs(t, err, fverr.ErrDB)
+		require.ErrorIs(t, err, bizerror.ErrDB)
 	})
 
 	t.Run("参数校验", func(t *testing.T) {
 		ft := &fakeTransport{}
 		cli := newFakeClient(t, ft)
-		require.ErrorIs(t, cli.Delete(ctx, "", "o-1"), fverr.ErrValidation)
-		require.ErrorIs(t, cli.Delete(ctx, "orders", ""), fverr.ErrValidation)
+		require.ErrorIs(t, cli.Delete(ctx, "", "o-1"), bizerror.ErrValidation)
+		require.ErrorIs(t, cli.Delete(ctx, "orders", ""), bizerror.ErrValidation)
 		assert.Equal(t, 0, ft.requestCount())
 	})
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 )
 
 // querySliceInitialCap 是结果行数未知时的初始切片容量：ClickHouse 数据块
@@ -12,34 +12,34 @@ import (
 const querySliceInitialCap = 64
 
 // QuerySlice 执行查询并把每行按 ch tag 反射填充为 T，返回 []T。
-// T 必须为结构体（否则返回 fverr.CodeDB 错误，不发起查询）；查询结果列在
+// T 必须为结构体（否则返回 bizerror.CodeDB 错误，不发起查询）；查询结果列在
 // T 中没有对应 ch tag/同名字段（列缺失），或列类型与字段类型不匹配时，
-// 返回 fverr.CodeDB 错误并定位到行号。空结果返回长度 0 的非 nil 切片；
+// 返回 bizerror.CodeDB 错误并定位到行号。空结果返回长度 0 的非 nil 切片；
 // 反射路径在包边界 recover，不向业务方泄漏 panic。
 func QuerySlice[T any](ctx context.Context, c *Client, query string, args ...any) (items []T, err error) {
 	if kind := reflect.TypeFor[T]().Kind(); kind != reflect.Struct {
-		return nil, fverr.NewError(fverr.CodeDB, "clickhouse.QuerySlice query={0}: 类型参数 {1} 非结构体", queryPreview(query), kind)
+		return nil, bizerror.NewError(bizerror.CodeDB, "clickhouse.QuerySlice query={0}: 类型参数 {1} 非结构体", queryPreview(query), kind)
 	}
 	defer func() { // 反射路径在包边界 recover
 		if r := recover(); r != nil {
-			items, err = nil, fverr.NewError(fverr.CodeDB, "clickhouse.QuerySlice query={0}: {1}", queryPreview(query), r)
+			items, err = nil, bizerror.NewError(bizerror.CodeDB, "clickhouse.QuerySlice query={0}: {1}", queryPreview(query), r)
 		}
 	}()
 	rows, err := c.conn.Query(ctx, query, args...)
 	if err != nil {
-		return nil, fverr.NewError(fverr.CodeDB, "clickhouse.QuerySlice query={0}", queryPreview(query)).AttachError(err, nil)
+		return nil, bizerror.NewError(bizerror.CodeDB, "clickhouse.QuerySlice query={0}", queryPreview(query)).AttachError(err, nil)
 	}
 	defer func() { _ = rows.Close() }()
 	items = make([]T, 0, querySliceInitialCap)
 	for rows.Next() {
 		var v T
 		if err := rows.ScanStruct(&v); err != nil {
-			return nil, fverr.NewError(fverr.CodeDB, "clickhouse.QuerySlice query={0} 第 {1} 行填充失败", queryPreview(query), len(items)+1).AttachError(err, nil)
+			return nil, bizerror.NewError(bizerror.CodeDB, "clickhouse.QuerySlice query={0} 第 {1} 行填充失败", queryPreview(query), len(items)+1).AttachError(err, nil)
 		}
 		items = append(items, v)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fverr.NewError(fverr.CodeDB, "clickhouse.QuerySlice query={0}", queryPreview(query)).AttachError(err, nil)
+		return nil, bizerror.NewError(bizerror.CodeDB, "clickhouse.QuerySlice query={0}", queryPreview(query)).AttachError(err, nil)
 	}
 	return items, nil
 }

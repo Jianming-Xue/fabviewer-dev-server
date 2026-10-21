@@ -6,7 +6,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/paging"
 	"github.com/fab-viewer/security-management/domain"
 	"github.com/fab-viewer/security-management/services"
@@ -60,7 +60,7 @@ func (s *UserService) Get(ctx context.Context, id string) (services.UserDTO, err
 }
 
 // List 分页查询。
-func (s *UserService) List(ctx context.Context, q paging.Query) (paging.Pageable[services.UserDTO], error) {
+func (s *UserService) List(ctx context.Context, q paging.PageRequest) (paging.Pageable[services.UserDTO], error) {
 	page, err := s.users.List(ctx, q)
 	if err != nil {
 		return paging.Pageable[services.UserDTO]{}, wrapStorage(ctx, "List", err)
@@ -98,7 +98,7 @@ func (s *UserService) Delete(ctx context.Context, id string, confirmed bool) err
 
 // wrapStorage 包装存储层技术错误：保留根因只进日志，Message 带操作名。
 func wrapStorage(ctx context.Context, op string, err error) error {
-	return fverr.NewError(fverr.CodeDB, "user storage op={0}", op).
+	return bizerror.NewError(bizerror.CodeDB, "user storage op={0}", op).
 		AttachError(err, nil)
 }
 

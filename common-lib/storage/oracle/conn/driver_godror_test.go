@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/utils/tests"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 )
 
 func TestGodrorDriverName(t *testing.T) {
@@ -60,15 +60,15 @@ func TestGodrorDriverNewCursor(t *testing.T) {
 	t.Run("查询通道为 nil 报校验错误", func(t *testing.T) {
 		_, err := godrorDriver{}.NewCursor(context.Background(), nil, fakeDriverRows{})
 		assert.Error(t, err)
-		e, ok := fverr.From(err)
+		e, ok := bizerror.From(err)
 		assert.True(t, ok)
-		assert.Equal(t, fverr.CodeValidation, e.Code)
+		assert.Equal(t, bizerror.CodeValidation, e.Code)
 	})
 
 	t.Run("行集为 nil 报校验错误", func(t *testing.T) {
 		_, err := godrorDriver{}.NewCursor(context.Background(), stubQuerier{}, nil)
 		assert.Error(t, err)
-		_, ok := fverr.From(err)
+		_, ok := bizerror.From(err)
 		assert.True(t, ok)
 	})
 
@@ -76,9 +76,9 @@ func TestGodrorDriverNewCursor(t *testing.T) {
 		failing := stubQuerier{err: errors.New("wrap fail")}
 		_, err := godrorDriver{}.NewCursor(context.Background(), failing, fakeDriverRows{})
 		assert.Error(t, err)
-		e, ok := fverr.From(err)
+		e, ok := bizerror.From(err)
 		assert.True(t, ok)
-		assert.Equal(t, fverr.CodeDB, e.Code)
+		assert.Equal(t, bizerror.CodeDB, e.Code)
 		assert.Contains(t, err.Error(), "WrapRows")
 	})
 }
@@ -101,8 +101,8 @@ func TestOpenGormInitializeError(t *testing.T) {
 
 	_, err := Open(context.Background(), validCfg(), withDriver(drv))
 	assert.Error(t, err)
-	e, ok := fverr.From(err)
+	e, ok := bizerror.From(err)
 	assert.True(t, ok)
-	assert.Equal(t, fverr.CodeDB, e.Code)
+	assert.Equal(t, bizerror.CodeDB, e.Code)
 	assert.Contains(t, err.Error(), "oracle.Open")
 }

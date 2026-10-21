@@ -5,18 +5,18 @@ package usererrors
 import (
 	"context"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/i18n"
 )
 
 // Code 常量即错误文件中的 key，供 WithStatusMap 等按码映射时引用。
 const (
-	CodeConfirmDeleteUser = fverr.Code("ConfirmDeleteUser")
-	CodeInvalidUserID     = fverr.Code("InvalidUserID")
-	CodeUserNotFound      = fverr.Code("UserNotFound")
+	CodeConfirmDeleteUser = bizerror.Code("ConfirmDeleteUser")
+	CodeInvalidUserID     = bizerror.Code("InvalidUserID")
+	CodeUserNotFound      = bizerror.Code("UserNotFound")
 )
 
-// ErrorCode 是本模块多语言错误字典的句柄：fverr.New(ctx,
+// ErrorCode 是本模块多语言错误字典的句柄：bizerror.New(ctx,
 // usererrors.ErrorCode, code) 据此在本模块的 messages_<语言>.go 中
 // 按请求语言查出 Message 模板。
 var ErrorCode = newDictionary()
@@ -28,14 +28,16 @@ func newDictionary() *i18n.Bundles {
 	return b
 }
 
-// New 按本模块字典创建 FvError（便捷构造函数的底层实现）：先按请求
-// 语言从字典查 Message 模板，再交给 fverr.NewError；模板含占位符
+// New 按本模块字典创建 BizError（便捷构造函数的底层实现）：先按请求
+// 语言从字典查 Message 模板，再交给 bizerror.NewError；模板含占位符
 // {0} {1} ... 时链式调用 InsertArgs 按序替换。
-func New(ctx context.Context, code fverr.Code) *fverr.FvError {
-	return fverr.NewError(code, ErrorCode.T(ctx, string(code)))
+func New(ctx context.Context, code bizerror.Code) *bizerror.BizError {
+	return bizerror.NewError(code, ErrorCode.T(ctx, string(code)))
 }
 
 // 便捷构造函数（推荐入口，每 key 一个）。
-func NewConfirmDeleteUser(ctx context.Context) *fverr.FvError { return New(ctx, CodeConfirmDeleteUser) }
-func NewInvalidUserID(ctx context.Context) *fverr.FvError     { return New(ctx, CodeInvalidUserID) }
-func NewUserNotFound(ctx context.Context) *fverr.FvError      { return New(ctx, CodeUserNotFound) }
+func NewConfirmDeleteUser(ctx context.Context) *bizerror.BizError {
+	return New(ctx, CodeConfirmDeleteUser)
+}
+func NewInvalidUserID(ctx context.Context) *bizerror.BizError { return New(ctx, CodeInvalidUserID) }
+func NewUserNotFound(ctx context.Context) *bizerror.BizError  { return New(ctx, CodeUserNotFound) }

@@ -13,7 +13,6 @@ import (
 
 	"github.com/fab-viewer/common-lib/api"
 	"github.com/fab-viewer/common-lib/api/middleware"
-	"github.com/fab-viewer/common-lib/common/actortx"
 	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
@@ -25,7 +24,7 @@ func TestRuntimeContextFullHeaders(t *testing.T) {
 	r.Use(middleware.FillRuntimeContext())
 	r.GET("/echo", func(c *gin.Context) {
 		got = rctx.GetRuntimeContext(c.Request.Context())
-		c.String(http.StatusOK, got.ID)
+		c.String(http.StatusOK, got.FromID())
 	})
 
 	reqTime := "20261019173000"
@@ -38,13 +37,12 @@ func TestRuntimeContextFullHeaders(t *testing.T) {
 	})
 
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, rctx.RuntimeContext{
-		ID:   "tx-42",
-		Time: time.Date(2026, 10, 19, 17, 30, 0, 0, time.UTC),
-		Name: "queryUsers",
-		User: "zhangsan",
-		Lang: "zh-CN",
-	}, got, "五字段完整解析进 tx 上下文")
+	assert.Equal(t, rctx.RuntimeContext{}.
+		WithID("tx-42").
+		WithTime(time.Date(2026, 10, 19, 17, 30, 0, 0, time.UTC)).
+		WithName("queryUsers").
+		WithUser("zhangsan").
+		WithLang("zh-CN"), got, "五字段完整解析进 tx 上下文")
 	assert.Equal(t, "tx-42", w.Body.String(), "请求 context 可读")
 	assert.Equal(t, "tx-42", w.Header().Get(api.HeaderTxID), "响应头回写 txId")
 }
@@ -68,11 +66,11 @@ func TestRuntimeContextLanguage(t *testing.T) {
 			r.Use(middleware.FillRuntimeContext())
 			r.GET("/e", func(c *gin.Context) {
 				got = rctx.GetRuntimeContext(c.Request.Context())
-				assert.Equal(t, got.Lang, api.LangOf(c), "LangOf 是 RuntimeContextOf(c).Lang 的语法糖")
+				assert.Equal(t, got.FromLang(), api.LangOf(c), "LangOf 是 RuntimeContextOf(c).Lang 的语法糖")
 			})
 
 			doGetWithHeaders(r, "/e", map[string]string{api.HeaderAcceptLanguage: tt.header})
-			assert.Equal(t, tt.want, got.Lang)
+			assert.Equal(t, tt.want, got.FromLang())
 		})
 	}
 }
@@ -82,8 +80,8 @@ func TestRuntimeContextOfInHandler(t *testing.T) {
 	r.Use(middleware.FillRuntimeContext())
 	r.GET("/gin-side", func(c *gin.Context) {
 		g := api.RuntimeContextOf(c)
-		assert.Equal(t, "tx-7", g.ID)
-		assert.Equal(t, "listOrders", g.Name)
+		assert.Equal(t, "tx-7", g.FromID())
+		assert.Equal(t, "listOrders", g.FromName())
 		c.String(http.StatusOK, api.TxIDOf(c))
 	})
 
@@ -116,8 +114,8 @@ func TestRuntimeContextTxTimeFallback(t *testing.T) {
 			})
 
 			after := time.Now().Add(time.Second)
-			require.False(t, got.Time.Before(before) || got.Time.After(after),
-				"txTime 应兜底为服务器当前时间，实际 %v", got.Time)
+			require.False(t, got.FromTime().Before(before) || got.FromTime().After(after),
+				"txTime 应兜底为服务器当前时间，实际 %v", got.FromTime())
 		})
 	}
 }
@@ -127,16 +125,16 @@ func TestRuntimeContextUserNameToActor(t *testing.T) {
 	r := newTestEngine()
 	r.Use(middleware.FillRuntimeContext())
 	r.GET("/audit", func(c *gin.Context) {
-		actorID = actortx.GetActorContext(c.Request.Context())
+		actorID = rctx.GetRuntimeContext(c.Request.Context()).FromUser()
 	})
 
 	doGetWithHeaders(r, "/audit", map[string]string{
 		api.HeaderUserName: "zhangsan",
 	})
-	assert.Equal(t, "zhangsan", actorID, "userName 注入 actortx 操作者上下文")
+	assert.Equal(t, "zhangsan", actorID, "userName 即审计操作者（RuntimeContext.User）")
 
 	doGet(r, "/audit")
-	assert.Empty(t, actorID, "userName 缺失时不注入操作者")
+	assert.Empty(t, actorID, "userName 缺失时操作者为空")
 }
 
 func TestRuntimeContextTxIDGenerate(t *testing.T) {

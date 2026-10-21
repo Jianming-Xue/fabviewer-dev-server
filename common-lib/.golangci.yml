@@ -56,15 +56,27 @@ linters:
         cross-layer-zero-deps:
           listMode: strict
           files:
-            - "**/common/fverr/**"
+            - "**/common/bizerror/**"
             - "**/common/paging/**"
-            - "**/common/actortx/**"
             - "**/common/rctx/**"
           allow:
             - "$gostd"
             - "github.com/stretchr/testify"
-        # logx 完整日志工具：zap 引擎 + 自研编号滚动（2026-10-20 用户拍板：
-        # 日志提供完整方案而非仅接口；滚动命名 log、log.1 ... log.N）。
+        # config 配置加载包：yaml 解析 + mapstructure 绑定（2026-10-21 拍板：
+        # 每业务服务自维护 application.yml，本包只提供加载/读取/校验能力，
+        # 不内置任何配置项）。
+        config-deps:
+          listMode: strict
+          files:
+            - "**/common/config/**"
+          allow:
+            - "$gostd"
+            - "github.com/stretchr/testify"
+            - "go.yaml.in/yaml/v3"
+            - "github.com/go-viper/mapstructure/v2"
+        # logx 完整日志工具：zap 引擎 + lumberjack 滚动 + config 段读取
+        # （2026-10-21 拍板：双出口 console/file，配置结构私有，组件自治
+        # Init；远程出口与自研编号滚动已移除）。
         logx-zap-engine:
           listMode: strict
           files:
@@ -73,6 +85,8 @@ linters:
             - "$gostd"
             - "github.com/stretchr/testify"
             - "go.uber.org/zap"
+            - "gopkg.in/natefinch/lumberjack.v2"
+            - "github.com/fab-viewer/common-lib/common/config"
         # i18n 跨层包：语言取自 tx 运行时上下文，除此之外零依赖。
         i18n-deps-only-tx:
           listMode: strict

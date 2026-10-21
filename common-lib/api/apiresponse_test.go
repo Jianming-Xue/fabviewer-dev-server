@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/api"
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/paging"
 	"github.com/fab-viewer/common-lib/common/rctx"
 )
@@ -68,7 +68,7 @@ func TestOK(t *testing.T) {
 func TestOKCarriesTxID(t *testing.T) {
 	r := newTestEngine()
 	r.GET("/ok", func(c *gin.Context) {
-		c.Set(api.CtxRuntimeContext, rctx.RuntimeContext{ID: "tx-123"})
+		c.Set(api.CtxRuntimeContext, rctx.RuntimeContext{}.WithID("tx-123"))
 		api.OK(c, nil)
 	})
 
@@ -102,24 +102,24 @@ func TestOKPage(t *testing.T) {
 	r := newTestEngine()
 	r.GET("/list", func(c *gin.Context) {
 		api.OKPage(c, paging.NewPageable[string](
-			paging.Query{PageIndex: 2, PageSize: 2}, 5, []string{"a", "b"}))
+			paging.PageRequest{PageIndex: 2, PageSize: 2}, 5, []string{"a", "b"}))
 	})
 
 	b := decode(t, doRequest(t, r, http.MethodGet, "/list"))
 	assert.Equal(t, http.StatusOK, b.Code)
 	assert.True(t, b.Success)
 	assert.JSONEq(t,
-		`{"pageSize":2,"pageIndex":2,"totalSize":5,"data":["a","b"]}`, string(b.Contents))
+		`{"pageIndex":2,"pageSize":2,"totalSize":5,"totalPage":3,"data":["a","b"]}`, string(b.Contents))
 }
 
 func TestOKPageEmptyData(t *testing.T) {
 	r := newTestEngine()
 	r.GET("/empty", func(c *gin.Context) {
-		api.OKPage(c, paging.NewPageable[int](paging.Query{}, 0, nil))
+		api.OKPage(c, paging.NewPageable[int](paging.PageRequest{}, 0, nil))
 	})
 
 	b := decode(t, doRequest(t, r, http.MethodGet, "/empty"))
-	assert.JSONEq(t, `{"pageSize":20,"pageIndex":1,"totalSize":0,"data":[]}`, string(b.Contents),
+	assert.JSONEq(t, `{"pageIndex":1,"pageSize":10,"totalSize":0,"totalPage":0,"data":[]}`, string(b.Contents),
 		"空结果 data 必须是 [] 而非 null")
 }
 
@@ -132,25 +132,25 @@ func TestFail(t *testing.T) {
 	}{
 		{
 			name:       "已知错误码按码表映射",
-			err:        fverr.NewError(fverr.CodeNotFound, "user 42 not found"),
+			err:        bizerror.NewError(bizerror.CodeNotFound, "user 42 not found"),
 			wantStatus: http.StatusNotFound,
 			wantErrMsg: "user 42 not found",
 		},
 		{
 			name:       "带明细不出参",
-			err:        fverr.NewError(fverr.CodeValidation, "参数非法").AttachError(nil, map[string]any{"field": "email"}),
+			err:        bizerror.NewError(bizerror.CodeValidation, "参数非法").AttachError(nil, map[string]any{"field": "email"}),
 			wantStatus: http.StatusBadRequest,
 			wantErrMsg: "参数非法",
 		},
 		{
 			name:       "包装错误沿用外层语义",
-			err:        fverr.NewError(fverr.CodeDB, "query orders").AttachError(errors.New("dial timeout"), nil),
+			err:        bizerror.NewError(bizerror.CodeDB, "query orders").AttachError(errors.New("dial timeout"), nil),
 			wantStatus: http.StatusInternalServerError,
 			wantErrMsg: "query orders",
 		},
 		{
 			name:       "未映射自定义码按 500",
-			err:        fverr.NewError(fverr.Code("USER_DISABLED"), "账号已禁用"),
+			err:        bizerror.NewError(bizerror.Code("USER_DISABLED"), "账号已禁用"),
 			wantStatus: http.StatusInternalServerError,
 			wantErrMsg: "账号已禁用",
 		},
@@ -219,7 +219,7 @@ func TestFailSkipsWhenWritten(t *testing.T) {
 	r := newTestEngine()
 	r.GET("/f", func(c *gin.Context) {
 		c.String(http.StatusOK, "first")
-		api.Fail(c, fverr.NewError(fverr.CodeNotFound, "ignored"))
+		api.Fail(c, bizerror.NewError(bizerror.CodeNotFound, "ignored"))
 	})
 
 	w := doRequest(t, r, http.MethodGet, "/f")
@@ -227,10 +227,10 @@ func TestFailSkipsWhenWritten(t *testing.T) {
 }
 
 func TestStatusFor(t *testing.T) {
-	assert.Equal(t, http.StatusOK, api.StatusFor(fverr.CodeOK))
-	assert.Equal(t, http.StatusNotFound, api.StatusFor(fverr.CodeNotFound))
-	assert.Equal(t, http.StatusBadGateway, api.StatusFor(fverr.CodeUpstream))
-	assert.Equal(t, http.StatusInternalServerError, api.StatusFor(fverr.Code("CUSTOM_X")),
+	assert.Equal(t, http.StatusOK, api.StatusFor(bizerror.CodeOK))
+	assert.Equal(t, http.StatusNotFound, api.StatusFor(bizerror.CodeNotFound))
+	assert.Equal(t, http.StatusBadGateway, api.StatusFor(bizerror.CodeUpstream))
+	assert.Equal(t, http.StatusInternalServerError, api.StatusFor(bizerror.Code("CUSTOM_X")),
 		"未映射码按 500")
 }
 
@@ -244,7 +244,7 @@ func TestLangOf(t *testing.T) {
 	t.Run("读取注入的语言", func(t *testing.T) {
 		r := newTestEngine()
 		r.GET("/l", func(c *gin.Context) {
-			c.Set(api.CtxRuntimeContext, rctx.RuntimeContext{Lang: "zh-CN"})
+			c.Set(api.CtxRuntimeContext, rctx.RuntimeContext{}.WithLang("zh-CN"))
 			c.String(http.StatusOK, api.LangOf(c))
 		})
 		assert.Equal(t, "zh-CN", doRequest(t, r, http.MethodGet, "/l").Body.String())

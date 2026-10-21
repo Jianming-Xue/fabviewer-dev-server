@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/storage"
 	"github.com/fab-viewer/common-lib/storage/clickhouse/config"
 )
@@ -98,9 +98,9 @@ func TestConfigToOptionsCompression(t *testing.T) {
 
 	t.Run("非法值返回 CodeValidation", func(t *testing.T) {
 		_, err := toOptions(config.Config{Compression: "bogus"})
-		var e *fverr.FvError
+		var e *bizerror.BizError
 		require.ErrorAs(t, err, &e)
-		assert.Equal(t, fverr.CodeValidation, e.Code)
+		assert.Equal(t, bizerror.CodeValidation, e.Code)
 		assert.Contains(t, err.Error(), `clickhouse.Config compression=bogus 非法`)
 	})
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/paging"
 )
 
@@ -24,7 +24,7 @@ func searchBody(t *testing.T, ft *fakeTransport, i int) map[string]any {
 // TestSearchOption 验证选项直接写入 searchConfig。
 func TestSearchOption(t *testing.T) {
 	sc := searchConfig{}
-	WithPaging(paging.Query{PageIndex: 2, PageSize: 5})(&sc)
+	WithPaging(paging.PageRequest{PageIndex: 2, PageSize: 5})(&sc)
 	WithSorts("-created_at", "+id")(&sc)
 	require.NotNil(t, sc.page)
 	assert.Equal(t, 2, sc.page.PageIndex)
@@ -62,7 +62,7 @@ func TestSearch(t *testing.T) {
 		cli := newFakeClient(t, ft)
 		query := map[string]any{"term": map[string]any{"status": "paid"}}
 		res, err := Search[orderDoc](ctx, cli, "orders", query,
-			WithPaging(paging.Query{PageIndex: 3, PageSize: 10}),
+			WithPaging(paging.PageRequest{PageIndex: 3, PageSize: 10}),
 			WithSorts("-created_at", "+id"))
 		require.NoError(t, err)
 		assert.EqualValues(t, 2, res.Total)
@@ -113,10 +113,10 @@ func TestSearch(t *testing.T) {
 			"status": 404}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, fverr.ErrNotFound)
-		e, ok := fverr.From(err)
+		require.ErrorIs(t, err, bizerror.ErrNotFound)
+		e, ok := bizerror.From(err)
 		require.True(t, ok)
-		assert.Equal(t, fverr.CodeNotFound, e.Code)
+		assert.Equal(t, bizerror.CodeNotFound, e.Code)
 		assert.Contains(t, err.Error(), "no such index [orders]")
 		assert.Contains(t, err.Error(), "opensearch.Search index=orders")
 		ft.assertAllClosed(t)
@@ -130,7 +130,7 @@ func TestSearch(t *testing.T) {
 			"status": 400}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", map[string]any{"match": "bad-query"})
-		require.ErrorIs(t, err, fverr.ErrValidation)
+		require.ErrorIs(t, err, bizerror.ErrValidation)
 		assert.Contains(t, err.Error(), "query_shard_exception: Failed to parse query")
 		ft.assertAllClosed(t)
 	})
@@ -140,7 +140,7 @@ func TestSearch(t *testing.T) {
 			"error": {"type": "internal_error", "reason": "node crashed"}, "status": 500}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, fverr.ErrDB)
+		require.ErrorIs(t, err, bizerror.ErrDB)
 		ft.assertAllClosed(t)
 	})
 
@@ -148,7 +148,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{status: http.StatusInternalServerError, body: `cluster down`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, fverr.ErrDB)
+		require.ErrorIs(t, err, bizerror.ErrDB)
 		ft.assertAllClosed(t)
 	})
 
@@ -156,7 +156,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{status: http.StatusTooManyRequests, body: `{"error":"too many","status":429}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, fverr.ErrTooMany)
+		require.ErrorIs(t, err, bizerror.ErrTooMany)
 		ft.assertAllClosed(t)
 	})
 
@@ -164,7 +164,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{failErr: context.DeadlineExceeded}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, fverr.ErrDB)
+		require.ErrorIs(t, err, bizerror.ErrDB)
 		assert.Contains(t, err.Error(), "opensearch.Search index=orders")
 	})
 
@@ -175,7 +175,7 @@ func TestSearch(t *testing.T) {
 			]}}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, fverr.ErrDB)
+		require.ErrorIs(t, err, bizerror.ErrDB)
 		assert.Contains(t, err.Error(), "_id=o-9")
 		ft.assertAllClosed(t)
 	})
@@ -185,7 +185,7 @@ func TestSearch(t *testing.T) {
 		cli := newFakeClient(t, ft)
 		for _, sort := range []string{"", "-", "+"} {
 			_, err := Search[orderDoc](ctx, cli, "orders", nil, WithSorts(sort))
-			require.ErrorIs(t, err, fverr.ErrValidation, "排序项 %q 应被拒绝", sort)
+			require.ErrorIs(t, err, bizerror.ErrValidation, "排序项 %q 应被拒绝", sort)
 		}
 		assert.Equal(t, 0, ft.requestCount())
 	})
@@ -194,7 +194,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", map[string]any{"fn": func() {}})
-		require.ErrorIs(t, err, fverr.ErrValidation)
+		require.ErrorIs(t, err, bizerror.ErrValidation)
 		assert.Equal(t, 0, ft.requestCount())
 	})
 
@@ -202,7 +202,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "", nil)
-		require.ErrorIs(t, err, fverr.ErrValidation)
+		require.ErrorIs(t, err, bizerror.ErrValidation)
 		assert.Equal(t, 0, ft.requestCount())
 	})
 }
@@ -211,10 +211,10 @@ func TestSearch(t *testing.T) {
 func TestSearch_PagingNormalize(t *testing.T) {
 	ft := &fakeTransport{status: http.StatusOK, body: `{"hits":{"total":{"value":0},"hits":[]}}`}
 	cli := newFakeClient(t, ft)
-	_, err := Search[orderDoc](context.Background(), cli, "orders", nil, WithPaging(paging.Query{}))
+	_, err := Search[orderDoc](context.Background(), cli, "orders", nil, WithPaging(paging.PageRequest{}))
 	require.NoError(t, err)
 
 	body := searchBody(t, ft, 0)
 	assert.EqualValues(t, 0, body["from"], "第 1 页 → from=0")
-	assert.EqualValues(t, 20, body["size"], "默认每页 20 条")
+	assert.EqualValues(t, 10, body["size"], "默认每页 10 条")
 }

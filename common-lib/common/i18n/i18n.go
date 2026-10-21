@@ -174,17 +174,17 @@ func (b *Bundles) DefaultLang() Language {
 	return b.defaultLang
 }
 
-// T 按请求上下文语言翻译：语言取 rctx.GetRuntimeContext(ctx).Lang（由
+// T 按请求上下文语言翻译：语言取 rctx.GetRuntimeContext(ctx).FromLang()（由
 // middleware.FillRuntimeContext 解析 Accept-Language 注入；未注入时
 // 为空串，走默认语言回退），查找链与 TOf 相同。
 func (b *Bundles) T(ctx context.Context, key string, args ...any) string {
-	return b.TOf(Language(rctx.GetRuntimeContext(ctx).Lang), key, args...)
+	return b.TOf(Language(rctx.GetRuntimeContext(ctx).FromLang()), key, args...)
 }
 
 // TOf 按指定语言翻译 key。查找链：该语言精确命中 → 基础语言（zh-CN → zh；
 // 只收窄不放宽：请求 zh 不会命中注册在 zh-CN 的译文）→ 默认语言 → key
 // 原文。模板用位置占位符 {0} {1} ...（各语言占位符在句中位置可不同），
-// args 按调用序替换（同 fverr.InsertArgs 语义）。
+// args 按调用序替换（同 bizerror.InsertArgs 语义）。
 func (b *Bundles) TOf(lang Language, key string, args ...any) string {
 	lang = NormalizeLanguage(string(lang))
 	msg := b.lookup(lang, key)
@@ -203,7 +203,7 @@ func (b *Bundles) TOf(lang Language, key string, args ...any) string {
 }
 
 // insertPlaceholders 将模板中的 {0} {1} ... 按序替换为参数值
-// （无占位符或参数多余时忽略）。与 fverr.InsertArgs 同语义（两包互不
+// （无占位符或参数多余时忽略）。与 bizerror.InsertArgs 同语义（两包互不
 // 依赖，各自内联实现）。
 func insertPlaceholders(template string, args []any) string {
 	for i, a := range args {

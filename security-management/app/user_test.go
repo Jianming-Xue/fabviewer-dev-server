@@ -144,7 +144,7 @@ func TestServiceLayerDirect(t *testing.T) {
 	_, err := svc.Create(ctx, services.CreateUserCmd{Username: "a", Name: "A"})
 	require.NoError(t, err)
 
-	page, err := svc.List(ctx, paging.Query{PageIndex: 1, PageSize: 20})
+	page, err := svc.List(ctx, paging.PageRequest{PageIndex: 1, PageSize: 20})
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, page.TotalSize)
 }

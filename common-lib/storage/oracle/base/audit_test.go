@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"github.com/fab-viewer/common-lib/common/actortx"
+	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
 // newHookDB 构造带 ctx 的最小 *gorm.DB（钩子只读 Statement.Context，
@@ -22,7 +22,7 @@ func newHookDB(ctx context.Context) *gorm.DB {
 }
 
 func TestBeforeCreateFillsAuditFields(t *testing.T) {
-	ctx := actortx.SetActorContext(context.Background(), "zhangsan")
+	ctx := rctx.SetRuntimeContext(context.Background(), rctx.RuntimeContext{}.WithUser("zhangsan"))
 	po := BasePO{ID: "1.2.3"}
 
 	require.NoError(t, po.BeforeCreate(newHookDB(ctx)))
@@ -34,7 +34,7 @@ func TestBeforeCreateFillsAuditFields(t *testing.T) {
 }
 
 func TestBeforeCreateKeepsManualValues(t *testing.T) {
-	ctx := actortx.SetActorContext(context.Background(), "zhangsan")
+	ctx := rctx.SetRuntimeContext(context.Background(), rctx.RuntimeContext{}.WithUser("zhangsan"))
 	manual := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	po := BasePO{ID: "1", CreatedBy: "manual", CreatedAt: manual}
 
@@ -55,7 +55,7 @@ func TestBeforeCreateWithoutActor(t *testing.T) {
 }
 
 func TestBeforeUpdateRefreshes(t *testing.T) {
-	ctx := actortx.SetActorContext(context.Background(), "lisi")
+	ctx := rctx.SetRuntimeContext(context.Background(), rctx.RuntimeContext{}.WithUser("lisi"))
 	po := BasePO{ID: "1", CreatedBy: "zhangsan", UpdatedBy: "zhangsan"}
 
 	require.NoError(t, po.BeforeUpdate(newHookDB(ctx)))

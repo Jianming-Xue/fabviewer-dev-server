@@ -77,8 +77,8 @@ func TestAccessLogWithSkipPaths(t *testing.T) {
 
 func TestAccessLogNilLoggerUsesDefault(t *testing.T) {
 	capture := &captureLogger{}
-	logx.SetDefault(capture)
-	t.Cleanup(func() { logx.SetDefault(logx.Nop()) })
+	logx.SetLogger(capture)
+	t.Cleanup(func() { logx.SetLogger(logx.Nop()) })
 
 	r := newTestEngine()
 	r.Use(middleware.AccessLog(nil)) // nil → logx.Default()

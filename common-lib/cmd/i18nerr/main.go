@@ -17,7 +17,7 @@
 // 字面量）。输出 errors_gen.go 四部分（key 要求形如导出标识符）：
 //
 //   - Code 常量（WithStatusMap 等按码映射时引用）
-//   - ErrorCode：本模块多语言字典句柄（fverr.New(ctx, usererrors.ErrorCode,
+//   - ErrorCode：本模块多语言字典句柄（bizerror.New(ctx, usererrors.ErrorCode,
 //     code) 据此按请求语言查模板）
 //   - New(ctx, code)：构造函数底层实现
 //   - 每 key 一个便捷构造函数（推荐入口）：usererrors.NewUserNotFound(ctx)
@@ -291,16 +291,16 @@ func generate(pkg string, defLang i18n.Language, files map[i18n.Language]msgFile
 	fmt.Fprintf(&sb, "package %s\n\n", pkg)
 	sb.WriteString("import (\n")
 	sb.WriteString("\t\"context\"\n\n")
-	sb.WriteString("\t\"github.com/fab-viewer/common-lib/common/fverr\"\n")
+	sb.WriteString("\t\"github.com/fab-viewer/common-lib/common/bizerror\"\n")
 	sb.WriteString("\t\"github.com/fab-viewer/common-lib/common/i18n\"\n")
 	sb.WriteString(")\n\n")
 	sb.WriteString("// Code 常量即错误文件中的 key，供 WithStatusMap 等按码映射时引用。\n")
 	sb.WriteString("const (\n")
 	for _, k := range keys {
-		fmt.Fprintf(&sb, "\tCode%s = fverr.Code(%q)\n", k, k)
+		fmt.Fprintf(&sb, "\tCode%s = bizerror.Code(%q)\n", k, k)
 	}
 	sb.WriteString(")\n\n")
-	fmt.Fprintf(&sb, "// ErrorCode 是本模块多语言错误字典的句柄：fverr.New(ctx,\n// %s.ErrorCode, code) 据此在本模块的 messages_<语言>.go 中\n", pkg)
+	fmt.Fprintf(&sb, "// ErrorCode 是本模块多语言错误字典的句柄：bizerror.New(ctx,\n// %s.ErrorCode, code) 据此在本模块的 messages_<语言>.go 中\n", pkg)
 	sb.WriteString("// 按请求语言查出 Message 模板。\n")
 	sb.WriteString("var ErrorCode = newDictionary()\n\n")
 	sb.WriteString("func newDictionary() *i18n.Bundles {\n")
@@ -310,15 +310,15 @@ func generate(pkg string, defLang i18n.Language, files map[i18n.Language]msgFile
 	}
 	sb.WriteString("\treturn b\n")
 	sb.WriteString("}\n\n")
-	sb.WriteString("// New 按本模块字典创建 FvError（便捷构造函数的底层实现）：先按请求\n")
-	sb.WriteString("// 语言从字典查 Message 模板，再交给 fverr.NewError；模板含占位符\n")
+	sb.WriteString("// New 按本模块字典创建 BizError（便捷构造函数的底层实现）：先按请求\n")
+	sb.WriteString("// 语言从字典查 Message 模板，再交给 bizerror.NewError；模板含占位符\n")
 	sb.WriteString("// {0} {1} ... 时链式调用 InsertArgs 按序替换。\n")
-	sb.WriteString("func New(ctx context.Context, code fverr.Code) *fverr.FvError {\n")
-	sb.WriteString("\treturn fverr.NewError(code, ErrorCode.T(ctx, string(code)))\n")
+	sb.WriteString("func New(ctx context.Context, code bizerror.Code) *bizerror.BizError {\n")
+	sb.WriteString("\treturn bizerror.NewError(code, ErrorCode.T(ctx, string(code)))\n")
 	sb.WriteString("}\n\n")
 	sb.WriteString("// 便捷构造函数（推荐入口，每 key 一个）。\n")
 	for _, k := range keys {
-		fmt.Fprintf(&sb, "func New%s(ctx context.Context) *fverr.FvError { return New(ctx, Code%s) }\n", k, k)
+		fmt.Fprintf(&sb, "func New%s(ctx context.Context) *bizerror.BizError { return New(ctx, Code%s) }\n", k, k)
 	}
 	return sb.String()
 }

@@ -53,9 +53,9 @@ func AccessLog(log logx.Logger, opts ...AccessLogOption) gin.HandlerFunc {
 			"status", c.Writer.Status(),
 			"latency_ms", time.Since(start).Milliseconds(),
 			"client_ip", c.ClientIP(),
-			"tx_id", rc.ID,
-			"tx_name", rc.Name,
-			"user", rc.User,
+			"tx_id", rc.FromID(),
+			"tx_name", rc.FromName(),
+			"user", rc.FromUser(),
 			"bytes", c.Writer.Size(),
 		)
 	}

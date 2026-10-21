@@ -2,8 +2,7 @@ package logx
 
 import (
 	"bytes"
-	"log/slog"
-	"strings"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -11,74 +10,68 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newBufLogger 返回写入 buffer 的 slog 适配与 buffer 本身，便于断言输出。
-func newBufLogger(minLevel slog.Level) (Logger, *bytes.Buffer) {
-	buf := &bytes.Buffer{}
-	l := NewSlog(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
-		Level: minLevel,
-	})))
-	return l, buf
+// bufLogger 是捕获式 Logger 假实现：按最低等级过滤、把调用写成
+// "level msg k=v" 行——用于断言全局出口与包级函数的转发行为。
+type bufLogger struct {
+	mu     sync.Mutex
+	buf    *bytes.Buffer
+	min    int // 0=debug 1=info 2=warn 3=error
+	fields []any
 }
 
-func TestSlogLevels(t *testing.T) {
-	l, buf := newBufLogger(slog.LevelDebug)
-
-	l.Debug("dbg msg", "k", 1)
-	l.Info("info msg", "k", 2)
-	l.Warn("warn msg", "k", 3)
-	l.Error("err msg", "k", 4)
-
-	out := buf.String()
-	// TextHandler 会给含空格的 msg 加引号
-	assert.Contains(t, out, `level=DEBUG msg="dbg msg"`)
-	assert.Contains(t, out, `level=INFO msg="info msg"`)
-	assert.Contains(t, out, `level=WARN msg="warn msg"`)
-	assert.Contains(t, out, `level=ERROR msg="err msg"`)
+func newBufLogger(minLevel int) *bufLogger {
+	return &bufLogger{buf: &bytes.Buffer{}, min: minLevel}
 }
 
-func TestSlogLevelFiltering(t *testing.T) {
-	l, buf := newBufLogger(slog.LevelInfo)
-
-	l.Debug("should be filtered")
-	assert.Empty(t, buf.String(), "Debug 低于 handler 级别应被过滤")
-
-	l.Info("should pass")
-	assert.Contains(t, buf.String(), "should pass")
+func (b *bufLogger) write(lv int, name, msg string, kv ...any) {
+	if lv < b.min {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	fmt.Fprintf(b.buf, "%s %s", name, msg)
+	for i := 0; i+1 < len(b.fields); i += 2 {
+		fmt.Fprintf(b.buf, " %v=%v", b.fields[i], b.fields[i+1])
+	}
+	for i := 0; i+1 < len(kv); i += 2 {
+		fmt.Fprintf(b.buf, " %v=%v", kv[i], kv[i+1])
+	}
+	b.buf.WriteByte('\n')
 }
 
-func TestSlogWith(t *testing.T) {
-	l, buf := newBufLogger(slog.LevelDebug)
+func (b *bufLogger) Debug(msg string, kv ...any) { b.write(0, "debug", msg, kv...) }
+func (b *bufLogger) Info(msg string, kv ...any)  { b.write(1, "info", msg, kv...) }
+func (b *bufLogger) Warn(msg string, kv ...any)  { b.write(2, "warn", msg, kv...) }
+func (b *bufLogger) Error(msg string, kv ...any) { b.write(3, "error", msg, kv...) }
 
-	derived := l.With("svc", "order", "env", "prod")
-	require.NotSame(t, l, derived, "With 应返回派生实例")
-
-	derived.Info("with msg")
-	out := buf.String()
-	assert.Contains(t, out, "svc=order")
-	assert.Contains(t, out, "env=prod")
-	assert.Contains(t, out, "with msg")
-
-	t.Run("派生不影响原 logger", func(t *testing.T) {
-		l.Info("origin msg")
-		for _, line := range strings.Split(buf.String(), "\n") {
-			if strings.Contains(line, "origin msg") {
-				assert.NotContains(t, line, "svc=order", "原 logger 输出不应带派生字段")
-			}
-		}
-	})
+func (b *bufLogger) With(kv ...any) Logger {
+	d := &bufLogger{buf: b.buf, min: b.min}
+	d.fields = append(append([]any{}, b.fields...), kv...)
+	return d
 }
 
-func TestNewSlogNil(t *testing.T) {
-	orig := slog.Default()
-	t.Cleanup(func() { slog.SetDefault(orig) })
+func (b *bufLogger) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
 
-	buf := &bytes.Buffer{}
-	slog.SetDefault(slog.New(slog.NewTextHandler(buf, nil)))
+func TestBufLoggerFilterAndWith(t *testing.T) {
+	l := newBufLogger(1) // info 及以上
 
-	l := NewSlog(nil)
-	require.NotNil(t, l)
-	l.Info("to default")
-	assert.Contains(t, buf.String(), "to default")
+	l.Debug("filtered")
+	assert.Empty(t, l.String(), "低于最低等级应被过滤")
+
+	l.Info("pass", "k", 1)
+	assert.Contains(t, l.String(), "info pass k=1")
+
+	derived := l.With("svc", "order")
+	derived.Warn("derived msg")
+	assert.Contains(t, l.String(), "warn derived msg svc=order", "With 字段随派生调用输出")
+
+	l.Info("origin")
+	assert.NotContains(t, l.String(), "origin msg svc", "派生不影响原 logger")
+	assert.Contains(t, l.String(), "info origin")
 }
 
 func TestNop(t *testing.T) {
@@ -96,8 +89,8 @@ func TestNop(t *testing.T) {
 	derived.Info("x")
 }
 
-func TestDefaultAndSetDefault(t *testing.T) {
-	t.Cleanup(func() { SetDefault(Nop()) })
+func TestDefaultAndSetLogger(t *testing.T) {
+	t.Cleanup(func() { SetLogger(Nop()) })
 
 	t.Run("初始为静默", func(t *testing.T) {
 		d := Default()
@@ -105,28 +98,63 @@ func TestDefaultAndSetDefault(t *testing.T) {
 		d.Info("silent") // 不 panic 即可
 	})
 
-	t.Run("SetDefault 注入后 Default 可见", func(t *testing.T) {
-		l, buf := newBufLogger(slog.LevelDebug)
-		SetDefault(l)
+	t.Run("SetLogger 注入后 Default 可见", func(t *testing.T) {
+		l := newBufLogger(0)
+		SetLogger(l)
 		Default().Info("via default")
-		assert.Contains(t, buf.String(), "via default")
+		assert.Contains(t, l.String(), "via default")
 	})
 
-	t.Run("SetDefault(nil) 重置为 Nop", func(t *testing.T) {
-		SetDefault(nil)
+	t.Run("SetLogger(nil) 重置为 Nop", func(t *testing.T) {
+		SetLogger(nil)
 		d := Default()
 		require.NotNil(t, d)
 		d.Error("still silent")
 	})
 }
 
-func TestSetDefaultConcurrent(t *testing.T) {
-	t.Cleanup(func() { SetDefault(Nop()) })
+func TestPackageLevelFuncs(t *testing.T) {
+	t.Cleanup(func() { SetLogger(Nop()) })
+
+	l := newBufLogger(0)
+	SetLogger(l)
+
+	Debug("dbg msg")
+	Info("info msg")
+	Warn("warn msg")
+	Error("err msg", "k", 1)
+
+	out := l.String()
+	assert.Contains(t, out, "debug dbg msg")
+	assert.Contains(t, out, "info info msg")
+	assert.Contains(t, out, "warn warn msg")
+	assert.Contains(t, out, "error err msg k=1")
+
+	t.Run("未初始化时静默（Nop）", func(t *testing.T) {
+		SetLogger(nil)
+		Info("dropped") // 不 panic 即可
+	})
+
+	t.Run("注入自定义 Logger 后包级函数降级走接口", func(t *testing.T) {
+		l := newBufLogger(0)
+		SetLogger(l)
+		Debug("via interface dbg")
+		Info("via interface", "k", 1)
+		Warn("via interface warn")
+		Error("via interface error")
+		assert.Contains(t, l.String(), "debug via interface dbg")
+		assert.Contains(t, l.String(), "info via interface k=1")
+		assert.Contains(t, l.String(), "warn via interface warn")
+		assert.Contains(t, l.String(), "error via interface error")
+	})
+}
+
+func TestSetLoggerConcurrent(t *testing.T) {
+	t.Cleanup(func() { SetLogger(Nop()) })
 
 	loggers := make([]Logger, 0, 8)
 	for i := range 8 {
-		loggers = append(loggers, NewSlog(slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))).
-			With("worker", i))
+		loggers = append(loggers, newBufLogger(0).With("worker", i))
 	}
 
 	var wg sync.WaitGroup
@@ -134,7 +162,7 @@ func TestSetDefaultConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			SetDefault(loggers[i%len(loggers)])
+			SetLogger(loggers[i%len(loggers)])
 			_ = Default()
 			Default().Info("race probe")
 		}()
@@ -143,5 +171,6 @@ func TestSetDefaultConcurrent(t *testing.T) {
 }
 
 func TestInterfaceCompliance(t *testing.T) {
-	var _ Logger = (*slogLogger)(nil) // Nop/NewSlog 本身返回 Logger，断言无意义
+	var _ Logger = (*bufLogger)(nil)
+	var _ Logger = nopLogger{}
 }

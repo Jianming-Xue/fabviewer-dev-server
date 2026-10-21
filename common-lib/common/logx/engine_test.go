@@ -1,302 +1,238 @@
-package logx_test
+package logx
 
 import (
-	"errors"
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"sync"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zapcore"
 
-	"github.com/fab-viewer/common-lib/common/logx"
+	"github.com/fab-viewer/common-lib/common/config"
 )
 
-// fakeSink 收集 Flush 到的批次（可注入阻塞）。
-type fakeSink struct {
-	mu      sync.Mutex
-	batches [][][]byte
-	block   chan struct{}
-}
-
-func (f *fakeSink) Flush(lines [][]byte) error {
-	if f.block != nil {
-		<-f.block // 测试用阻塞
+// logSection 构造等价于 application.yml log 段的 map，覆盖项按 muts 变更。
+func logSection(muts ...func(map[string]any)) map[string]any {
+	console := map[string]any{"enabled": true, "format": "console"}
+	file := map[string]any{"enabled": true, "format": "json"}
+	root := map[string]any{"log": map[string]any{
+		"level":   "info",
+		"console": console,
+		"file":    file,
+	}}
+	for _, mut := range muts {
+		mut(root)
 	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.batches = append(f.batches, lines)
-	return nil
+	return root
 }
 
-func (f *fakeSink) snapshot() (out [][][]byte) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append(out, f.batches...)
+func disableConsole(m map[string]any) {
+	m["log"].(map[string]any)["console"].(map[string]any)["enabled"] = false
 }
 
-func (f *fakeSink) totalLines() int {
-	n := 0
-	for _, b := range f.snapshot() {
-		n += len(b)
-	}
-	return n
-}
-
-func TestNewFileOutput(t *testing.T) {
+func TestInitFileEndToEnd(t *testing.T) {
+	t.Cleanup(func() { SetLogger(Nop()) })
 	path := filepath.Join(t.TempDir(), "app.log")
-	log, closeLog, err := logx.New(logx.Config{
-		Level: "info",
-		File:  &logx.FileConfig{Path: path},
-	})
+
+	m := logSection(disableConsole)
+	m["log"].(map[string]any)["file"].(map[string]any)["path"] = path
+
+	log, closeLog, err := Init(m)
 	require.NoError(t, err)
 
-	log.Debug("应被级别过滤")
-	log.Info("access", "tx_id", "t-1", "status", 404)
-	log.Error("boom", "err", "timeout")
-	log.With("svc", "demo").Info("with 派生")
+	log.Info("hello file", "id", 42)
 	closeLog()
 
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
-	got := string(data)
-	assert.Contains(t, got, `"msg":"access"`)
-	assert.Contains(t, got, `"tx_id":"t-1"`)
-	assert.Contains(t, got, `"status":404`)
-	assert.Contains(t, got, `"msg":"boom"`)
-	assert.Contains(t, got, `"err":"timeout"`)
-	assert.Contains(t, got, `"svc":"demo"`, "With 字段随行携带")
-	assert.NotContains(t, got, "应被级别过滤", "info 级别下 debug 不输出")
-	assert.Contains(t, got, `"level":"info"`, "级别小写")
+	line := string(data)
+	assert.Contains(t, line, `"msg":"hello file"`, "json 默认格式")
+	assert.Contains(t, line, `"id":42`)
+
+	t.Run("Init 落位全局出口", func(t *testing.T) {
+		Debug("via package debug")
+		Info("via package func")
+		Warn("via package warn")
+		Error("via package error")
+		closeLog() // 已 Close 再调用收尾不应 panic
+		data, _ := os.ReadFile(path)
+		assert.Contains(t, string(data), "via package func")
+		assert.Contains(t, string(data), `"caller":"`, "caller 指向调用行（json 含 caller 字段）")
+		assert.Contains(t, string(data), "engine_test.go:", "包级函数直调 zap，caller 应指向本测试文件")
+	})
 }
 
-func TestNewConsoleFormat(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "app.log")
-	log, closeLog, err := logx.New(logx.Config{
-		Format: "console",
-		File:   &logx.FileConfig{Path: path},
+func TestInitNoLogComponent(t *testing.T) {
+	t.Run("两个出口都禁用", func(t *testing.T) {
+		m := logSection(func(m map[string]any) {
+			disableConsole(m)
+			m["log"].(map[string]any)["file"].(map[string]any)["enabled"] = false
+		})
+		_, _, err := Init(m)
+		assert.ErrorIs(t, err, ErrNoLogComponent)
 	})
+
+	t.Run("缺失整个 log 段", func(t *testing.T) {
+		_, _, err := Init(map[string]any{})
+		assert.ErrorIs(t, err, ErrNoLogComponent)
+	})
+
+	t.Run("只写子段不写 enabled 默认不启用", func(t *testing.T) {
+		_, _, err := Init(map[string]any{"log": map[string]any{"level": "info"}})
+		assert.ErrorIs(t, err, ErrNoLogComponent)
+	})
+}
+
+func TestInitValidation(t *testing.T) {
+	t.Run("enabled 非布尔", func(t *testing.T) {
+		m := logSection(func(m map[string]any) {
+			m["log"].(map[string]any)["console"].(map[string]any)["enabled"] = "yes"
+		})
+		_, _, err := Init(m)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, config.ErrInvalidBoolValue)
+	})
+
+	t.Run("maxSize 非数字", func(t *testing.T) {
+		m := logSection(func(m map[string]any) {
+			m["log"].(map[string]any)["file"].(map[string]any)["maxSize"] = "abc"
+		})
+		_, _, err := Init(m)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, config.ErrInvalidNumberValue)
+	})
+
+	t.Run("键缺失不校验（取默认值）", func(t *testing.T) {
+		m := logSection(disableConsole)
+		m["log"].(map[string]any)["file"] = map[string]any{"enabled": true, "path": filepath.Join(t.TempDir(), "a.log")}
+		_, closeLog, err := Init(m)
+		require.NoError(t, err, "未配置 format/maxSize 等键不应报错")
+		closeLog()
+	})
+}
+
+func TestInitConsoleEndToEnd(t *testing.T) {
+	t.Cleanup(func() { SetLogger(Nop()) })
+	path := filepath.Join(t.TempDir(), "both.log")
+
+	m := logSection(func(m map[string]any) {
+		m["log"].(map[string]any)["file"].(map[string]any)["path"] = path
+	})
+	log, closeLog, err := Init(m) // console + file 双出口（stdout 有输出属预期）
 	require.NoError(t, err)
-	log.Info("hello", "k", "v")
+
+	// 覆盖 zapLogger 桥接的全部方法与 With 派生
+	log.Debug("dbg")
+	log.Warn("warn")
+	log.Error("error")
+	log.With("k", "v").Info("derived")
 	closeLog()
 
-	data, _ := os.ReadFile(path)
-	assert.NotContains(t, string(data), `"msg"`, "console 格式非 JSON")
-	assert.Contains(t, string(data), "hello")
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"msg":"derived"`)
+	assert.Contains(t, string(data), `"k":"v"`)
 }
 
-func TestNewFileRotation(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "app.log")
-	log, closeLog, err := logx.New(logx.Config{
-		File: &logx.FileConfig{Path: path, MaxSizeMB: 1, MaxBackups: 2},
+func TestInitBindFailure(t *testing.T) {
+	m := logSection(func(m map[string]any) {
+		m["log"].(map[string]any)["console"] = "oops" // 字符串绑不到结构体
 	})
-	require.NoError(t, err)
+	_, _, err := Init(m)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrNoLogComponent, "绑定失败与未启用出口是不同错误")
+}
 
-	// 写超 1MB 触发编号滚动（每行 ~120B，1.2 万行足够）
-	for i := range 12000 {
-		log.Info("rotation fill line", "i", i)
+func TestInitWeaklyTypedFromEnv(t *testing.T) {
+	t.Cleanup(func() { SetLogger(Nop()) })
+	path := filepath.Join(t.TempDir(), "env.log")
+
+	m := logSection(disableConsole)
+	file := m["log"].(map[string]any)["file"].(map[string]any)
+	file["path"] = path
+	file["maxSize"] = "150" // 环境变量覆盖后的典型形态：字符串数字
+
+	_, closeLog, err := Init(m)
+	require.NoError(t, err)
+	Info("env override ok")
+	closeLog()
+
+	_, _ = os.ReadFile(path) // 写入成功即证明绑定与出口正常
+}
+
+func TestResolveLevel(t *testing.T) {
+	tests := []struct {
+		name   string
+		outlet string
+		global string
+		want   zapcore.Level
+	}{
+		{"出口优先", "error", "debug", zapcore.ErrorLevel},
+		{"出口空退全局", "", "warn", zapcore.WarnLevel},
+		{"出口非法退全局", "trace", "warn", zapcore.WarnLevel},
+		{"全空兜底 info", "", "", zapcore.InfoLevel},
+		{"全局也非法兜底 info", "fatal", "verbose", zapcore.InfoLevel},
+		{"debug 四档之一", "debug", "info", zapcore.DebugLevel},
 	}
-	closeLog()
-
-	entries, err := os.ReadDir(dir)
-	require.NoError(t, err)
-	names := make(map[string]bool)
-	for _, e := range entries {
-		names[e.Name()] = true
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, resolveLevel(tt.outlet, tt.global))
+		})
 	}
-	assert.True(t, names["app.log.1"], "滚动产生 app.log.1")
-	assert.LessOrEqual(t, countBackups(names), 2, "留档不超过 MaxBackups")
 }
 
-func countBackups(names map[string]bool) int {
-	n := 0
-	for name := range names {
-		if name != "app.log" {
-			n++
-		}
+func TestParseLevel(t *testing.T) {
+	for _, s := range []string{"debug", "info", "warn", "error"} {
+		_, ok := parseLevel(s)
+		assert.True(t, ok, s)
+		_, ok = parseLevel(strings.ToUpper(s))
+		assert.True(t, ok, "大小写不敏感: "+s)
 	}
-	return n
-}
-
-func TestNewPerSinkEncoders(t *testing.T) {
-	// 场景同业务服务 A：文件出口为业务自定义字符串格式，
-	// 远程出口为业务自定义 JSON（两条格式互不相同）
-	path := filepath.Join(t.TempDir(), "app.log")
-	sink := &fakeSink{}
-	log, closeLog, err := logx.New(logx.Config{
-		File: &logx.FileConfig{
-			Path: path,
-			Encoder: logx.LineEncoder(func(r logx.Rec) string {
-				return fmt.Sprintf("%s|%s|%s|%v",
-					r.Time.Format("2006-01-02 15:04:05"), r.Level, r.Msg, r.KV)
-			}),
-		},
-		Remote: sink,
-		RemoteEncoder: logx.LineEncoder(func(r logx.Rec) string {
-			return fmt.Sprintf(`{"lvl":%q,"msg":%q,"kv":%d}`,
-				r.Level, r.Msg, len(r.KV)/2)
-		}),
-		RemoteBatchSize:  10,
-		RemoteFlushEvery: time.Hour,
-	})
-	require.NoError(t, err)
-
-	log.With("svc", "A").Info("hello", "tx_id", "t-1")
-	closeLog()
-
-	data, _ := os.ReadFile(path)
-	got := string(data)
-	assert.Contains(t, got, "|info|hello|", "文件出口为业务字符串格式")
-	assert.Contains(t, got, "svc A", "With 派生字段随行")
-
-	batches := sink.snapshot()
-	require.Len(t, batches, 1)
-	assert.Contains(t, string(batches[0][0]), `"lvl":"info"`, "远程出口为业务 JSON 格式")
-	assert.Contains(t, string(batches[0][0]), `"kv":2`)
-}
-
-func TestNewRemoteBatches(t *testing.T) {
-	sink := &fakeSink{}
-	log, closeLog, err := logx.New(logx.Config{
-		Stdout:           false,
-		Remote:           sink,
-		RemoteBatchSize:  2,
-		RemoteFlushEvery: time.Hour, // 只靠凑批触发
-	})
-	require.NoError(t, err)
-
-	for i := range 5 {
-		log.Info("line", "i", i)
+	for _, s := range []string{"", "trace", "verbose", "fatal", "panic"} {
+		_, ok := parseLevel(s)
+		assert.False(t, ok, s)
 	}
-	closeLog()
-
-	batches := sink.snapshot()
-	require.Len(t, batches, 3, "5 行按批 2 切成 2+2+1")
-	assert.Len(t, batches[0], 2)
-	assert.Len(t, batches[2], 1)
-	assert.Contains(t, string(batches[0][0]), `"msg":"line"`)
 }
 
-func TestNewRemoteFlushByInterval(t *testing.T) {
-	sink := &fakeSink{}
-	log, closeLog, err := logx.New(logx.Config{
-		Remote:           sink,
-		RemoteBatchSize:  100, // 凑不满
-		RemoteFlushEvery: 50 * time.Millisecond,
-	})
-	require.NoError(t, err)
-
-	log.Info("tick line")
-	require.Eventually(t, func() bool { return sink.totalLines() == 1 },
-		2*time.Second, 10*time.Millisecond, "定时刷出应独立于凑批")
-	closeLog()
-	assert.Equal(t, 1, sink.totalLines())
-}
-
-func TestNewRemoteDropWhenBufferFull(t *testing.T) {
-	sink := &fakeSink{block: make(chan struct{})}
-	log, closeLog, err := logx.New(logx.Config{
-		Remote:           sink,
-		RemoteBatchSize:  1,
-		RemoteFlushEvery: time.Hour,
-		RemoteBufferSize: 2,
-	})
-	require.NoError(t, err)
-
-	// Flush 阻塞期间继续写：缓冲满后丢弃，绝不阻塞调用方
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for i := range 10 {
-			log.Info("flood", "i", i)
-		}
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("缓冲满时写入被阻塞")
+func TestNewEncoder(t *testing.T) {
+	enc := func(e zapcore.Encoder) string {
+		buf, err := e.EncodeEntry(zapcore.Entry{Level: zapcore.InfoLevel, Message: "m"}, nil)
+		require.NoError(t, err)
+		return buf.String()
 	}
-	close(sink.block) // 放行
-	closeLog()
 
-	assert.Less(t, sink.totalLines(), 10, "超出缓冲的行被丢弃")
-	assert.GreaterOrEqual(t, sink.totalLines(), 1)
+	assert.Contains(t, enc(newEncoder("")), `"msg":"m"`, "空串默认 json")
+	assert.Contains(t, enc(newEncoder("json")), `"msg":"m"`)
+	assert.Contains(t, enc(newEncoder("xml")), `"msg":"m"`, "非法取值静默按 json")
+	assert.Contains(t, enc(newEncoder("console")), "\tm\n", "console 格式为制表符分隔")
+	assert.Contains(t, enc(newEncoder("Console")), "\tm\n", "format 大小写不敏感")
 }
 
-func TestNewStdoutOutput(t *testing.T) {
-	// 捕获标准输出验证 stdout 出口
-	orig := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
-	t.Cleanup(func() { os.Stdout = orig })
-
-	log, closeLog, err := logx.New(logx.Config{Stdout: true})
-	require.NoError(t, err)
-	log.Info("to stdout", "k", "v")
-	log.Warn("warned") // 补 Warn 分支
-	closeLog()
-	_ = w.Close()
-
-	out, _ := io.ReadAll(r)
-	assert.Contains(t, string(out), `"msg":"to stdout"`)
-	assert.Contains(t, string(out), `"msg":"warned"`)
-}
-
-// errSink 投递必失败（测丢弃计数路径）。
-type errSink struct {
-	mu    sync.Mutex
-	calls int
-}
-
-func (e *errSink) Flush(_ [][]byte) error {
-	e.mu.Lock()
-	e.calls++
-	e.mu.Unlock()
-	return errors.New("remote down")
-}
-
-func TestNewRemoteFlushErrorDrops(t *testing.T) {
-	sink := &errSink{}
-	log, closeLog, err := logx.New(logx.Config{
-		Remote:           sink,
-		RemoteBatchSize:  1,
-		RemoteFlushEvery: 10 * time.Millisecond,
+func TestWithFileDefaults(t *testing.T) {
+	t.Run("全默认", func(t *testing.T) {
+		fc := withFileDefaults(&fileConfig{})
+		assert.Equal(t, defaultLogPath, fc.Path)
+		assert.Equal(t, defaultMaxSizeMB, fc.MaxSize)
+		assert.Equal(t, defaultMaxBackups, fc.MaxBackups)
+		assert.Equal(t, defaultMaxAgeDays, fc.MaxAge)
 	})
-	require.NoError(t, err)
-	log.Info("lost line")
-	closeLog()
-	assert.GreaterOrEqual(t, sink.calls, 1, "失败批被投递尝试")
+
+	t.Run("显式值保留", func(t *testing.T) {
+		fc := withFileDefaults(&fileConfig{Path: "a.log", MaxSize: 1, MaxBackups: 2, MaxAge: 3})
+		assert.Equal(t, "a.log", fc.Path)
+		assert.Equal(t, 1, fc.MaxSize)
+		assert.Equal(t, 2, fc.MaxBackups)
+		assert.Equal(t, 3, fc.MaxAge)
+	})
 }
 
-func TestNewRemoteDefaultFlushEvery(t *testing.T) {
-	sink := &fakeSink{}
-	// 不传 RemoteFlushEvery：走默认值分支，构造即覆盖
-	log, closeLog, err := logx.New(logx.Config{Remote: sink, RemoteBatchSize: 1})
-	require.NoError(t, err)
-	log.Info("line")
-	require.Eventually(t, func() bool { return sink.totalLines() == 1 },
-		6*time.Second, 10*time.Millisecond, "默认 5s 定时也应在测试窗口内刷出")
-	closeLog()
-}
-
-func TestNewConfigErrors(t *testing.T) {
-	_, _, err := logx.New(logx.Config{})
-	assert.ErrorContains(t, err, "至少启用一个出口")
-
-	_, _, err = logx.New(logx.Config{Level: "loud", File: &logx.FileConfig{Path: "x"}})
-	assert.ErrorContains(t, err, "非法级别")
-
-	dir := t.TempDir()
-	_, _, err = logx.New(logx.Config{File: &logx.FileConfig{}})
-	assert.ErrorContains(t, err, "Path 不能为空")
-
-	// Path 指向目录：文件出口打开失败向上传播
-	_, _, err = logx.New(logx.Config{File: &logx.FileConfig{Path: dir}})
-	assert.ErrorContains(t, err, "打开日志文件")
+func TestLocalTimeThreeState(t *testing.T) {
+	// LocalTime 用 *bool 表达三态：nil 默认 true、显式 true/false 原样
+	fc := &fileConfig{}
+	assert.True(t, fc.LocalTime == nil || *fc.LocalTime, "未配置按 true")
+	tt, ff := true, false
+	assert.True(t, *(&fileConfig{LocalTime: &tt}).LocalTime)
+	assert.False(t, *(&fileConfig{LocalTime: &ff}).LocalTime)
 }

@@ -9,20 +9,17 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/fab-viewer/common-lib/api"
-	"github.com/fab-viewer/common-lib/common/actortx"
 	"github.com/fab-viewer/common-lib/common/i18n"
 	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
 // FillRuntimeContext 构建请求运行时上下文的中间件工厂：解析请求头
 // txId/txTime/txName/userName 与标准头 Accept-Language（取首选语言，
-// i18n.ParseAcceptLanguage 规范化）组装为 rctx.RuntimeContext，三路注入——
+// i18n.ParseAcceptLanguage 规范化）组装为 rctx.RuntimeContext，两路注入——
 //
 //   - 请求 context（rctx.SetRuntimeContext）：service/storage 层经 rctx.GetRuntimeContext
-//     全链路可读
-//   - 操作者上下文（actortx.SetActorContext，取 userName）：oracle 审计钩子
-//     自动填
-//     CreatedBy/UpdatedBy（userName 为空不注入）
+//     全链路可读；userName 即审计操作者（oracle 审计钩子自动填
+//     CreatedBy/UpdatedBy）
 //   - gin.Context（key 为 api.CtxRuntimeContext）：响应体 txId 字段读取
 //
 // 兜底规则：txId 缺失用 crypto/rand 生成 16 字节 hex（缺失兜底行为待定，
@@ -31,25 +28,25 @@ import (
 // 统一回写响应头 txId。
 func FillRuntimeContext() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		rc := rctx.RuntimeContext{
-			ID:   c.GetHeader(api.HeaderTxID),
-			Time: parseTxTime(c.GetHeader(api.HeaderTxTime)),
-			Name: c.GetHeader(api.HeaderTxName),
-			User: c.GetHeader(api.HeaderUserName),
+		id := c.GetHeader(api.HeaderTxID)
+		if id == "" {
+			id = newTxID()
 		}
-		if rc.ID == "" {
-			rc.ID = newTxID()
-		}
+		lang := ""
 		if langs := i18n.ParseAcceptLanguage(c.GetHeader(api.HeaderAcceptLanguage)); len(langs) > 0 {
-			rc.Lang = string(langs[0])
+			lang = string(langs[0])
 		}
+		rc := rctx.RuntimeContext{}.
+			WithID(id).
+			WithTime(parseTxTime(c.GetHeader(api.HeaderTxTime))).
+			WithName(c.GetHeader(api.HeaderTxName)).
+			WithUser(c.GetHeader(api.HeaderUserName)).
+			WithLang(lang)
 		c.Set(api.CtxRuntimeContext, rc)
 
-		ctx := rctx.SetRuntimeContext(c.Request.Context(), rc)
-		ctx = actortx.SetActorContext(ctx, rc.User)
-		c.Request = c.Request.WithContext(ctx)
+		c.Request = c.Request.WithContext(rctx.SetRuntimeContext(c.Request.Context(), rc))
 
-		c.Header(api.HeaderTxID, rc.ID)
+		c.Header(api.HeaderTxID, rc.FromID())
 		c.Next()
 	}
 }

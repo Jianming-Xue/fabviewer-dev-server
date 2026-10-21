@@ -26,5 +26,5 @@
 // FillRuntimeContext 解析请求头 txId/txTime/txName/userName 与标准头
 // Accept-Language 组装为 rctx.RuntimeContext 注入请求上下文（业务层经
 // rctx.GetRuntimeContext 读取），
-// userName 同时注入 actortx 操作者链路，Lang 供 common/i18n 按请求语言翻译。
+// userName 即审计操作者，Lang 供 common/i18n 按请求语言翻译。
 package api

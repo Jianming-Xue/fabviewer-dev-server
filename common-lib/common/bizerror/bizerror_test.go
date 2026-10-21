@@ -1,4 +1,4 @@
-package fverr
+package bizerror
 
 import (
 	"errors"
@@ -101,12 +101,12 @@ func TestIsErrorAndFrom(t *testing.T) {
 func TestErrorMessage(t *testing.T) {
 	tests := []struct {
 		name string
-		err  *FvError
+		err  *BizError
 		want string
 	}{
 		{"无根因", NewError(CodeNotFound, "user not found"), "[NOT_FOUND] user not found"},
 		{"带根因", NewError(CodeDB, "query users").AttachError(errors.New("io timeout"), nil), "[DB_ERROR] query users: io timeout"},
-		{"空 code", &FvError{Message: "bare"}, "[] bare"},
+		{"空 code", &BizError{Message: "bare"}, "[] bare"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -121,7 +121,7 @@ func TestErrorIs(t *testing.T) {
 		assert.ErrorIs(t, e, ErrNotFound)
 	})
 
-	t.Run("链式 FvError 根因同码命中（Is+Unwrap 组合）", func(t *testing.T) {
+	t.Run("链式 BizError 根因同码命中（Is+Unwrap 组合）", func(t *testing.T) {
 		// 外层 CodeDB、根因 ErrNotFound：外层 Is() 比码不中 → Unwrap 拆到根因
 		// → 根因 Is() 比码命中。删掉 Unwrap 此判断即失效。
 		e := NewError(CodeDB, "repository.Create").AttachError(ErrNotFound, nil)
@@ -137,7 +137,7 @@ func TestErrorIs(t *testing.T) {
 		assert.ErrorIs(t, ErrValidation, ErrValidation)
 	})
 
-	t.Run("对非 FvError 目标返回 false", func(t *testing.T) {
+	t.Run("对非 BizError 目标返回 false", func(t *testing.T) {
 		assert.False(t, NewError(CodeInternal, "x").Is(errors.New("plain")))
 	})
 

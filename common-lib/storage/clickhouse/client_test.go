@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/storage/clickhouse/config"
 )
 
@@ -66,17 +66,17 @@ type fakeBatch struct{ driver.Batch }
 func TestOpen(t *testing.T) {
 	t.Run("配置非法返回 CodeValidation 且不拨号", func(t *testing.T) {
 		_, err := Open(context.Background(), config.Config{Compression: "bogus"})
-		var e *fverr.FvError
+		var e *bizerror.BizError
 		require.ErrorAs(t, err, &e)
-		assert.Equal(t, fverr.CodeValidation, e.Code)
+		assert.Equal(t, bizerror.CodeValidation, e.Code)
 	})
 
 	t.Run("连接失败返回 CodeDB 带地址上下文", func(t *testing.T) {
 		cfg := config.Config{Addrs: []string{"127.0.0.1:1"}, DialTimeout: 200 * time.Millisecond}
 		_, err := Open(context.Background(), cfg)
-		var e *fverr.FvError
+		var e *bizerror.BizError
 		require.ErrorAs(t, err, &e)
-		assert.Equal(t, fverr.CodeDB, e.Code)
+		assert.Equal(t, bizerror.CodeDB, e.Code)
 		assert.Contains(t, err.Error(), "clickhouse.Open ping addrs=[127.0.0.1:1]")
 	})
 }
@@ -92,9 +92,9 @@ func TestClientExec(t *testing.T) {
 	t.Run("失败带查询预览上下文", func(t *testing.T) {
 		c := &Client{conn: &fakeConn{execErr: errors.New("exec boom")}}
 		err := c.Exec(context.Background(), "SELECT\n  id,\n  name\nFROM t")
-		var e *fverr.FvError
+		var e *bizerror.BizError
 		require.ErrorAs(t, err, &e)
-		assert.Equal(t, fverr.CodeDB, e.Code)
+		assert.Equal(t, bizerror.CodeDB, e.Code)
 		assert.Contains(t, err.Error(), "clickhouse.Exec query=SELECT id, name FROM t: exec boom")
 	})
 }
@@ -111,9 +111,9 @@ func TestClientQuery(t *testing.T) {
 	t.Run("失败带查询上下文", func(t *testing.T) {
 		c := &Client{conn: &fakeConn{queryErr: errors.New("query boom")}}
 		rows, err := c.Query(context.Background(), "SELECT boom")
-		var e *fverr.FvError
+		var e *bizerror.BizError
 		require.ErrorAs(t, err, &e)
-		assert.Equal(t, fverr.CodeDB, e.Code)
+		assert.Equal(t, bizerror.CodeDB, e.Code)
 		assert.Nil(t, rows) // 失败时不产生结果集，无需关闭
 		assert.Contains(t, err.Error(), "clickhouse.Query query=SELECT boom")
 	})

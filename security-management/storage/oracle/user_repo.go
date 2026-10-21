@@ -83,7 +83,7 @@ func (r *UserRepo) FindByUsername(ctx context.Context, username string) (*domain
 }
 
 // List 分页查询（按创建时间倒序）。
-func (r *UserRepo) List(ctx context.Context, q paging.Query) (paging.Pageable[domain.User], error) {
+func (r *UserRepo) List(ctx context.Context, q paging.PageRequest) (paging.Pageable[domain.User], error) {
 	q = q.Normalize()
 	var total int64
 	if err := r.db.WithContext(ctx).Model(&userPO{}).Count(&total).Error; err != nil {

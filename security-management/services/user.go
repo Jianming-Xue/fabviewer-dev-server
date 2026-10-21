@@ -1,6 +1,6 @@
 // Package services 定义对外能力接口与出入参（DTO）：api 层只认识本包，
 // app 层提供实现。接口即契约——错误语义（编码/消息/语言）由 app 层经
-// fverr 表达，本包不涉及。
+// bizerror 表达，本包不涉及。
 package services
 
 import (
@@ -33,6 +33,6 @@ type CreateUserCmd struct {
 type UserService interface {
 	Create(ctx context.Context, cmd CreateUserCmd) (UserDTO, error)
 	Get(ctx context.Context, id string) (UserDTO, error)
-	List(ctx context.Context, q paging.Query) (paging.Pageable[UserDTO], error)
+	List(ctx context.Context, q paging.PageRequest) (paging.Pageable[UserDTO], error)
 	Delete(ctx context.Context, id string, confirmed bool) error
 }

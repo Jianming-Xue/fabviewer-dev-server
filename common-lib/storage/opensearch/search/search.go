@@ -8,7 +8,7 @@ import (
 
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/paging"
 	opensearch "github.com/fab-viewer/common-lib/storage/opensearch"
 )
@@ -32,7 +32,7 @@ type SearchResult[T any] struct {
 
 // searchConfig 汇聚 SearchOption 注入的可选项。
 type searchConfig struct {
-	page  *paging.Query
+	page  *paging.PageRequest
 	sorts []string
 }
 
@@ -43,7 +43,7 @@ type SearchOption func(*searchConfig)
 
 // WithPaging 按分页值对象生成 DSL 的 from/size（q.Offset()/q.Limit()，
 // 零值 Query 即默认第 1 页、每页 20 条）。
-func WithPaging(q paging.Query) SearchOption {
+func WithPaging(q paging.PageRequest) SearchOption {
 	return func(sc *searchConfig) { sc.page = &q }
 }
 
@@ -56,11 +56,11 @@ func WithSorts(sorts ...string) SearchOption {
 // Search 在 index 上执行查询并返回类型化结果。query 为 ES 查询 DSL
 // （如 map[string]any{"term": ...} 或业务侧查询结构体），序列化为请求体
 // 的 query 字段，nil 表示 match_all。分页经 WithPaging、排序经 WithSorts。
-// 错误翻译：404（index_not_found）→ fverr.ErrNotFound，4xx → CodeValidation，
+// 错误翻译：404（index_not_found）→ bizerror.ErrNotFound，4xx → CodeValidation，
 // 5xx → CodeDB。
 func Search[T any](ctx context.Context, c *opensearch.Client, index string, query any, opts ...SearchOption) (SearchResult[T], error) {
 	if index == "" {
-		return SearchResult[T]{}, fverr.NewError(fverr.CodeValidation, "opensearch.Search index 不能为空")
+		return SearchResult[T]{}, bizerror.NewError(bizerror.CodeValidation, "opensearch.Search index 不能为空")
 	}
 	sc := searchConfig{}
 	for _, opt := range opts {
@@ -94,13 +94,13 @@ func buildSearchBody(index string, query any, sc *searchConfig) ([]byte, error) 
 	if len(sc.sorts) > 0 {
 		sorts, err := buildSorts(sc.sorts)
 		if err != nil {
-			return nil, fverr.NewError(fverr.CodeValidation, "opensearch.Search index={0} 构造排序", index).AttachError(err, nil)
+			return nil, bizerror.NewError(bizerror.CodeValidation, "opensearch.Search index={0} 构造排序", index).AttachError(err, nil)
 		}
 		body["sort"] = sorts
 	}
 	data, err := json.Marshal(body)
 	if err != nil {
-		return nil, fverr.NewError(fverr.CodeValidation, "opensearch.Search index={0} 序列化查询 DSL", index).AttachError(err, nil)
+		return nil, bizerror.NewError(bizerror.CodeValidation, "opensearch.Search index={0} 序列化查询 DSL", index).AttachError(err, nil)
 	}
 	return data, nil
 }
@@ -118,7 +118,7 @@ func buildSorts(sorts []string) ([]any, error) {
 			field = strings.TrimPrefix(s, "+")
 		}
 		if field == "" {
-			return nil, fverr.NewError(fverr.CodeValidation, "opensearch.Search 非法排序项 {0}", s)
+			return nil, bizerror.NewError(bizerror.CodeValidation, "opensearch.Search 非法排序项 {0}", s)
 		}
 		out = append(out, map[string]any{field: map[string]any{"order": order}})
 	}
@@ -136,7 +136,7 @@ func decodeHits[T any](index string, resp *opensearchapi.SearchResp) (SearchResu
 		hit := Hit[T]{ID: sdkHit.ID, Score: float64(sdkHit.Score)}
 		if len(sdkHit.Source) > 0 {
 			if err := json.Unmarshal(sdkHit.Source, &hit.Source); err != nil {
-				return SearchResult[T]{}, fverr.NewError(fverr.CodeDB, "opensearch.Search index={0} 反序列化命中 _id={1} 的 _source", index, sdkHit.ID).AttachError(err, nil)
+				return SearchResult[T]{}, bizerror.NewError(bizerror.CodeDB, "opensearch.Search index={0} 反序列化命中 _id={1} 的 _source", index, sdkHit.ID).AttachError(err, nil)
 			}
 		}
 		result.Hits = append(result.Hits, hit)

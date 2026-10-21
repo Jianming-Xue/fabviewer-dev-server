@@ -4,13 +4,15 @@
 // middleware.FillRuntimeContext 注入请求 context，
 // service/application/storage 各层经 rctx.GetRuntimeContext 读取。
 //
-// 与 actortx/paging 同理：这是跨层会合点——api 包与 storage 包互不感知，
-// 只在本包相会。userName 的审计用途由 actortx 包承接（中间件注入时同链写入），
-// 本包只负责运行时上下文的完整传递。
+// 与 paging 同理：这是跨层会合点——api 包与 storage 包互不感知，
+// 只在本包相会。userName 同时是审计操作者（原独立操作者通道已并入，
+// oracle BasePO 钩子直接从 RuntimeContext 取值）。
 //
-// 定时任务没有请求头，由任务入口自行注入：
+// 字段私有：WithXxx 链式赋值（值语义副本）、FromXxx 取值。定时任务没有
+// 请求头，由任务入口自行注入：
 //
-//	ctx = rctx.SetRuntimeContext(ctx, rctx.RuntimeContext{ID: snowflake.Next(), Name: "daily-settle"})
+//	ctx = rctx.SetRuntimeContext(ctx,
+//	    rctx.RuntimeContext{}.WithID(id).WithName("daily-settle"))
 //
 // 本包零三方依赖。
 package rctx

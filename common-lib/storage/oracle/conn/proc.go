@@ -9,7 +9,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/fab-viewer/common-lib/common/fverr"
+	"github.com/fab-viewer/common-lib/common/bizerror"
 )
 
 // 编译期断言：标准库三种执行器天然满足 Execer。
@@ -46,7 +46,7 @@ func (db *DB) CallFunc(ctx context.Context, name string, dest any, args ...any) 
 // 上调用存储过程，使其与调用方处于同一事务。
 func CallProcTx(ctx context.Context, tx Execer, name string, args ...any) error {
 	if tx == nil {
-		return fverr.NewError(fverr.CodeValidation, "oracle.CallProcTx tx 不能为 nil, proc={0}", name)
+		return bizerror.NewError(bizerror.CodeValidation, "oracle.CallProcTx tx 不能为 nil, proc={0}", name)
 	}
 	return callProc(newCallCtx(ctx, defaultDriver, tx, name), args)
 }
@@ -54,7 +54,7 @@ func CallProcTx(ctx context.Context, tx Execer, name string, args ...any) error 
 // CallFuncTx 在给定执行器上调用存储函数，dest 语义同 CallFunc。
 func CallFuncTx(ctx context.Context, tx Execer, name string, dest any, args ...any) error {
 	if tx == nil {
-		return fverr.NewError(fverr.CodeValidation, "oracle.CallFuncTx tx 不能为 nil, func={0}", name)
+		return bizerror.NewError(bizerror.CodeValidation, "oracle.CallFuncTx tx 不能为 nil, func={0}", name)
 	}
 	return callFunc(newCallCtx(ctx, defaultDriver, tx, name), dest, args)
 }
@@ -81,7 +81,7 @@ func newCallCtx(ctx context.Context, drv driverAdapter, ex Execer, name string) 
 //	})
 func FromGorm(db *gorm.DB) (Execer, error) {
 	if db == nil || db.Statement == nil || db.Statement.ConnPool == nil {
-		return nil, fverr.NewError(fverr.CodeValidation, "oracle.FromGorm gorm.DB 未初始化")
+		return nil, bizerror.NewError(bizerror.CodeValidation, "oracle.FromGorm gorm.DB 未初始化")
 	}
 	// gorm.ConnPool 接口本身包含 ExecContext/QueryContext，必然满足 Execer。
 	return db.Statement.ConnPool, nil
@@ -102,11 +102,11 @@ type outArg struct {
 func Out(dest any) (out any) {
 	defer func() {
 		if r := recover(); r != nil {
-			out = outArg{err: fverr.NewError(fverr.CodeValidation, "oracle.Out 入参非法引发 panic: {0}", r)}
+			out = outArg{err: bizerror.NewError(bizerror.CodeValidation, "oracle.Out 入参非法引发 panic: {0}", r)}
 		}
 	}()
 	if dest == nil || reflect.ValueOf(dest).Kind() != reflect.Pointer {
-		return outArg{err: fverr.NewError(fverr.CodeValidation, "oracle.Out dest 必须为非 nil 指针, got {0}", dest)}
+		return outArg{err: bizerror.NewError(bizerror.CodeValidation, "oracle.Out dest 必须为非 nil 指针, got {0}", dest)}
 	}
 	return outArg{dest: dest}
 }
@@ -126,7 +126,7 @@ func callProc(c callCtx, args []any) error {
 // callFunc 是函数调用核心：返回值作为 :1 号 OUT 绑定，其余参数顺延。
 func callFunc(c callCtx, dest any, args []any) error {
 	if dest == nil || reflect.ValueOf(dest).Kind() != reflect.Pointer {
-		return fverr.NewError(fverr.CodeValidation, "oracle.CallFunc {0} dest 必须为非 nil 指针, got {1}", c.name, dest)
+		return bizerror.NewError(bizerror.CodeValidation, "oracle.CallFunc {0} dest 必须为非 nil 指针, got {1}", c.name, dest)
 	}
 	binds, cursors, err := buildBindings(args)
 	if err != nil {
@@ -174,7 +174,7 @@ func fillCursors(ctx context.Context, drv driverAdapter, ex Execer, cursors []*o
 		}
 		cur, err := drv.NewCursor(ctx, ex, c.rows)
 		if err != nil {
-			return fverr.NewError(fverr.CodeDB, "oracle 游标 OUT 绑定 {0}", name).AttachError(err, nil)
+			return bizerror.NewError(bizerror.CodeDB, "oracle 游标 OUT 绑定 {0}", name).AttachError(err, nil)
 		}
 		*c.dest = *cur
 	}
@@ -186,11 +186,11 @@ func fillCursors(ctx context.Context, drv driverAdapter, ex Execer, cursors []*o
 func safeExec(ctx context.Context, ex Execer, query string, args ...any) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fverr.NewError(fverr.CodeValidation, "oracle 执行 {0} 时绑定入参引发 panic: {1}", query, r)
+			err = bizerror.NewError(bizerror.CodeValidation, "oracle 执行 {0} 时绑定入参引发 panic: {1}", query, r)
 		}
 	}()
 	if _, execErr := ex.ExecContext(ctx, query, args...); execErr != nil {
-		return fverr.NewError(fverr.CodeDB, "oracle 执行 {0} 失败", query).AttachError(execErr, nil)
+		return bizerror.NewError(bizerror.CodeDB, "oracle 执行 {0} 失败", query).AttachError(execErr, nil)
 	}
 	return nil
 }
