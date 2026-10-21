@@ -28,7 +28,7 @@ services/
 | 服务配置 | 每服务自维护 `application.yml`（路径可经 `{appName}_CFG` 覆盖）；加载/读取/校验用 `common/config`（LoadConfig/GetSection[T]/Bind/Get/ValidateIs*）；叶子环境变量覆盖：`security.log.level` 式点分全路径 |
 | HTTP 装配 | 引擎/四中间件/healthz/优雅停机归 `common-lib/cmd/server`（NewEngine 传模块码表 + Init 读 server 段 + NewServer/Run）；业务经 wire `server.ProviderSet` 装配，main 只剩 InitializeServer → Run；server 段默认 :8080/release，超时写 "5s" 式字符串 |
 | 日志 | `logx.Init(cfgMap)` 唯一初始化（cmd/server 统一装配调用）；业务一律包级函数 `logx.Info/Warn/Error/Debug` 零持有；双出口 console/file（lumberjack 滚动）、等级链 outlet→global→info 静默兜底、format json 默认/console；caller 指向业务行；测试经 SetLogger 注入 |
-| 统一响应 | `response.ApiResponse` 五字段（code/success/errMsg/data/txId）；出口仅 `OK`/`Fail`：OK 默认 200、errMsg 可选；Fail 默认 **200** 可 WithCode、success 恒 false、errMsg 必填、data 恒 nil；data 由 handler 给（single/集合/分页 pageable）；VO→DTO 出参 time→"yyyy-MM-dd HH:mm:ss" 字符串、bool→int（response.Wrap 或 units 原语） |
+| 统一响应 | `response.ApiResponse` 五字段（code/success/errMsg/data/txId），**HTTP 恒 200**；构建仅 `OK`/`Fail`：code 是业务码（OK 默认 **1**、Fail 默认 **0**，WithCode 可改），OK 的 errMsg 可选、Fail 的 errMsg 必填且 data 恒 nil；data 由 handler 给（single/集合/分页 pageable）；模块错误码经 `errorhandler.WithCodeMap` 映射业务 code；VO→DTO 出参 time→yyyyMMddHHmmss 字符串、bool→int（response.Wrap 或 units 原语） |
 | 统一错误 | `bizerror.BizError` 四字段（原 fverr/FvError 更名）；唯一构造 `NewError(code,msg,args...)` + 链式 `InsertArgs`/`AttachError`；判断 `IsError/From`；出口只出 Message 其余进日志；**错误编码不出响应体** |
 | 错误多语言 | 每模块自己的 `messages_<语言>.go`（key 即 code，`{0}` 位置占位符）；`go generate`（i18nerr）产出构造函数；模块字典跟包走、无全局注册 |
 | 删除确认 | 确认消息必须带实体名：模板 `{0}` + `InsertArgs(name)`（用户/角色/登录策略同理） |

@@ -39,32 +39,34 @@ func TestNewEngine(t *testing.T) {
 		assert.Equal(t, "ok", w.Body.String())
 	})
 
-	t.Run("模块码按 statusMap 映射", func(t *testing.T) {
+	t.Run("模块码按 codeMap 映射进响应体（HTTP 恒 200）", func(t *testing.T) {
 		w := doGet(r, "/disabled")
-		require.Equal(t, http.StatusForbidden, w.Code)
+		require.Equal(t, http.StatusOK, w.Code)
 		var b struct {
 			Code   int    `json:"code"`
 			ErrMsg string `json:"errMsg"`
 		}
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
-		assert.Equal(t, http.StatusForbidden, b.Code)
+		assert.Equal(t, http.StatusForbidden, b.Code, "映射值进 body 的业务 code")
 		assert.Equal(t, "账号已禁用", b.ErrMsg)
 	})
 
-	t.Run("未知错误兜底 500 统一体", func(t *testing.T) {
+	t.Run("未知错误兜底 code 0 统一体", func(t *testing.T) {
 		w := doGet(r, "/unknown")
-		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `"code":0`)
 		assert.NotContains(t, w.Body.String(), "assert.AnError", "根因不进响应")
 	})
 
-	t.Run("panic 兜底 500 且响应头带 txId", func(t *testing.T) {
+	t.Run("panic 兜底 code 0 且响应头带 txId", func(t *testing.T) {
 		w := doGet(r, "/boom")
-		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `"code":0`)
 		assert.NotEmpty(t, w.Header().Get("txId"), "runtimecontext 中间件已入链")
 	})
 }
 
-func TestNewEngineNilStatusMap(t *testing.T) {
+func TestNewEngineNilCodeMap(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := server.NewEngine(nil)
 	r.GET("/e", func(c *gin.Context) {
@@ -72,7 +74,8 @@ func TestNewEngineNilStatusMap(t *testing.T) {
 	})
 
 	w := doGet(r, "/e")
-	assert.Equal(t, http.StatusNotFound, w.Code, "nil 码表仅用默认映射")
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"code":0`, "nil 码表按 Fail 默认 0")
 }
 
 func TestNewEngineWithMessageFunc(t *testing.T) {

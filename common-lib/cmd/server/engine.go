@@ -39,15 +39,15 @@ func WithMessageFunc(fn func(*gin.Context, *bizerror.BizError) string) EngineOpt
 // recovery → runtimecontext，顺序契约见 api/middleware 包文档）并内置
 // /healthz 探活（访问日志默认跳过）。
 //
-// statusMap 是业务模块错误码 → HTTP 状态码映射（每个业务必传，无模块码
-// 可传 nil 仅用默认码表）；其他业务差异经 opts 传入。
-func NewEngine(statusMap map[bizerror.Code]int, opts ...EngineOption) *gin.Engine {
+// codeMap 是业务模块错误码 → 响应体业务 code 的映射（每个业务必传，
+// 无模块码可传 nil 全按默认 0/1）；其他业务差异经 opts 传入。
+func NewEngine(codeMap map[bizerror.Code]int, opts ...EngineOption) *gin.Engine {
 	cfg := engineConfig{}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 
-	ehOpts := []errorhandler.HandlerOption{errorhandler.WithStatusMap(statusMap)}
+	ehOpts := []errorhandler.HandlerOption{errorhandler.WithCodeMap(codeMap)}
 	if cfg.messageFn != nil {
 		ehOpts = append(ehOpts, errorhandler.WithMessageFunc(cfg.messageFn))
 	}

@@ -11,3 +11,7 @@ bin/
 
 # Claude Code 本地会话配置
 .claude/
+
+# 生成器/示例编译产物
+/i18nerr
+/examples/apifull/apifull

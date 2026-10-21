@@ -47,7 +47,7 @@ func TestFullStack(t *testing.T) {
 			TxID    string `json:"txId"`
 		}
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
-		assert.Equal(t, http.StatusOK, b.Code)
+		assert.Equal(t, 1, b.Code, "OK 默认业务码 1")
 		assert.True(t, b.Success)
 		assert.Equal(t, w.Header().Get(reqctx.HeaderTxID), b.TxID,
 			"响应体 txId 与响应头一致")
@@ -55,12 +55,12 @@ func TestFullStack(t *testing.T) {
 
 	t.Run("错误路径", func(t *testing.T) {
 		w := testutil.DoGet(r, "/fail")
-		require.Equal(t, http.StatusNotFound, w.Code)
+		require.Equal(t, http.StatusOK, w.Code, "HTTP 恒 200，业务码进 body")
 	})
 
 	t.Run("panic 路径", func(t *testing.T) {
 		w := testutil.DoGet(r, "/panic")
-		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Equal(t, http.StatusOK, w.Code)
 		assert.NotEmpty(t, w.Header().Get(reqctx.HeaderTxID),
 			"panic 响应仍应带 txId 头")
 
@@ -70,7 +70,7 @@ func TestFullStack(t *testing.T) {
 			TxID    string `json:"txId"`
 		}
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
-		assert.Equal(t, http.StatusInternalServerError, b.Code)
+		assert.Equal(t, 0, b.Code, "Recovery 走 Fail 默认业务码 0")
 		assert.False(t, b.Success)
 		assert.NotEmpty(t, b.TxID, "Recovery 写回的统一体含 txId")
 	})
@@ -96,8 +96,8 @@ func TestFullStack(t *testing.T) {
 	}
 	assert.Equal(t, 3, accessCount, "每次请求一条访问日志（含 panic 请求）")
 	assert.Equal(t, http.StatusOK, statusByPath["/ok"])
-	assert.Equal(t, http.StatusNotFound, statusByPath["/fail"],
-		"访问日志必须记录 errorhandler 写回的最终状态码")
-	assert.Equal(t, http.StatusInternalServerError, statusByPath["/panic"],
-		"访问日志必须记录 recovery 写回的最终状态码")
+	assert.Equal(t, http.StatusOK, statusByPath["/fail"],
+		"HTTP 恒 200：错误路径也写回 200")
+	assert.Equal(t, http.StatusOK, statusByPath["/panic"],
+		"panic 路径同样写回 200")
 }

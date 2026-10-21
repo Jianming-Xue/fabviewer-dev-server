@@ -20,15 +20,17 @@ func TestRecoveryPanickingHandler(t *testing.T) {
 	r.GET("/boom", func(_ *gin.Context) { panic("something exploded") })
 
 	w := testutil.DoGet(r, "/boom")
-	require.Equal(t, http.StatusInternalServerError, w.Code)
+	require.Equal(t, http.StatusOK, w.Code)
 
 	var body struct {
 		Code    int    `json:"code"`
 		Success bool   `json:"success"`
 		ErrMsg  string `json:"errMsg"`
+		Data    any    `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.Equal(t, http.StatusInternalServerError, body.Code)
+	assert.Equal(t, 0, body.Code, "Fail 默认业务码 0")
+	assert.Nil(t, body.Data)
 	assert.False(t, body.Success)
 	assert.Equal(t, "internal error", body.ErrMsg, "不向调用方泄漏 panic 内容")
 

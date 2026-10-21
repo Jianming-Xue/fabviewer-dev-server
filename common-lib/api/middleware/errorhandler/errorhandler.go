@@ -5,12 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"github.com/fab-viewer/common-lib/api/errresp"
 	"github.com/fab-viewer/common-lib/api/reqctx"
 	"github.com/fab-viewer/common-lib/api/response"
 	"github.com/fab-viewer/common-lib/common/bizerror"
@@ -18,20 +16,20 @@ import (
 )
 
 type handlerConfig struct {
-	statusMap map[bizerror.Code]int
+	codeMap   map[bizerror.Code]int
 	messageFn func(*gin.Context, *bizerror.BizError) string
 }
 
 // HandlerOption 配置 ErrorHandler 中间件。
 type HandlerOption func(*handlerConfig)
 
-// WithStatusMap 以传入映射增补/覆盖默认错误码 → HTTP 状态码表
-// （用于业务模块错误码，如 {usererrors.CodeUserDisabled: http.StatusForbidden}）；
-// 未映射的自定义码仍按 500 处理。
-func WithStatusMap(m map[bizerror.Code]int) HandlerOption {
+// WithCodeMap 增补业务模块错误码 → 响应体业务 code 的映射（HTTP 状态码
+// 恒 200，映射值进 ApiResponse.Code；如 {usererrors.CodeUserDisabled: 1003}）。
+// 未映射的码按 Fail 默认 code 0 处理。
+func WithCodeMap(m map[bizerror.Code]int) HandlerOption {
 	return func(cfg *handlerConfig) {
-		for code, status := range m {
-			cfg.statusMap[code] = status
+		for code, c := range m {
+			cfg.codeMap[code] = c
 		}
 	}
 }
@@ -48,14 +46,16 @@ func WithMessageFunc(fn func(*gin.Context, *bizerror.BizError) string) HandlerOp
 // ErrorHandler 统一消费 handler 中经 c.Error(err) 上报的错误并写回统一响应体：
 //
 //   - *bizerror.BizError：errMsg 直接输出 Message（创建时已翻译，出口零翻译），
-//     按码表映射状态码；Code 与 Details 不出参，随 business error 日志留痕
-//   - gorm.ErrRecordNotFound / sql.ErrNoRows → 404
-//   - context.Canceled → 499（客户端断开，只记日志）
-//   - 其余 → 500，根因只进日志不进响应
+//     业务 code 按 WithCodeMap 映射（未映射 0）；Code 与 Details 不出参，
+//     随 business error 日志留痕
+//   - gorm.ErrRecordNotFound / sql.ErrNoRows → "resource not found"
+//   - context.Canceled → "client canceled request"（只记日志）
+//   - 其余 → "internal error"，根因只进日志不进响应
 //
-// 必须注册在 accesslog 内层（c.Next() 返回后才能看到全部错误）；
-// 响应已写过时跳过（防双写）。日志经全局出口 logx 记录（测试经
-// logx.SetLogger 注入），组件零持有日志对象。
+// HTTP 状态码恒 200（与传输层解耦），写回经 response.Fail（构建响应只有
+// OK/Fail 两个入口）。必须注册在 accesslog 内层（c.Next() 返回后才能看到
+// 全部错误）；响应已写过时跳过（防双写）。日志经全局出口 logx 记录
+// （测试经 logx.SetLogger 注入）。
 func ErrorHandler(opts ...HandlerOption) gin.HandlerFunc {
 	cfg := newHandlerConfig(opts)
 	return func(c *gin.Context) {
@@ -68,20 +68,18 @@ func ErrorHandler(opts ...HandlerOption) gin.HandlerFunc {
 	}
 }
 
-// newHandlerConfig 以默认码表为底、逐项应用 Option。
+// newHandlerConfig 以空码表为底、逐项应用 Option（业务码完全由业务经
+// WithCodeMap 提供，库内不设默认业务码）。
 func newHandlerConfig(opts []HandlerOption) handlerConfig {
-	cfg := handlerConfig{statusMap: make(map[bizerror.Code]int, len(errresp.DefaultStatusMap))}
-	for code, status := range errresp.DefaultStatusMap {
-		cfg.statusMap[code] = status
-	}
+	cfg := handlerConfig{codeMap: make(map[bizerror.Code]int)}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 	return cfg
 }
 
-// writeError 将错误写回统一响应体：BizError 按码表映射状态码并直接输出
-// Message，其余按哨兵错误（not found / canceled）或兜底 500 处理，
+// writeError 将错误经 response.Fail 写回：BizError 按码表映射业务 code
+// 并直接输出 Message，其余按哨兵错误（not found / canceled）或兜底处理，
 // 根因只进日志。
 func writeError(c *gin.Context, err error, cfg handlerConfig) {
 	var e *bizerror.BizError
@@ -91,37 +89,28 @@ func writeError(c *gin.Context, err error, cfg handlerConfig) {
 	}
 	switch {
 	case errors.Is(err, gorm.ErrRecordNotFound), errors.Is(err, sql.ErrNoRows):
-		r := response.ApiResponse{
-			Code: http.StatusNotFound, ErrMsg: "resource not found", TxID: reqctx.TxIDOf(c),
-		}
-		response.Write(c, &r)
+		response.Fail(c, "resource not found")
 	case errors.Is(err, context.Canceled):
 		logx.Info("client canceled request",
 			"path", c.Request.URL.Path, "tx_id", reqctx.TxIDOf(c))
-		r := response.ApiResponse{
-			Code: errresp.StatusClientClosedRequest, ErrMsg: "client canceled request", TxID: reqctx.TxIDOf(c),
-		}
-		response.Write(c, &r)
+		response.Fail(c, "client canceled request")
 	default:
 		logx.Error("unhandled error",
 			"err", err.Error(),
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
 			"tx_id", reqctx.TxIDOf(c))
-		r := response.ApiResponse{
-			Code: http.StatusInternalServerError, ErrMsg: "internal error", TxID: reqctx.TxIDOf(c),
-		}
-		response.Write(c, &r)
+		response.Fail(c, "internal error")
 	}
 }
 
-// writeBizError 处理 *bizerror.BizError：状态码取码表（未映射按 500，code 即状态码），
-// errMsg 直接输出 e.Message（不翻译，可被 messageFn 改写）；Details 不出参，
-// 随 business error 日志留痕。
+// writeBizError 处理 *bizerror.BizError：业务 code 取 WithCodeMap 码表
+// （未映射按 Fail 默认 0），errMsg 直接输出 e.Message（不翻译，可被
+// messageFn 改写）；Details 不出参，随 business error 日志留痕。
 func writeBizError(c *gin.Context, e *bizerror.BizError, cfg handlerConfig) {
-	status, ok := cfg.statusMap[e.Code]
+	code, ok := cfg.codeMap[e.Code]
 	if !ok {
-		status = http.StatusInternalServerError
+		code = 0
 	}
 	message := e.Message
 	if cfg.messageFn != nil {
@@ -136,6 +125,5 @@ func writeBizError(c *gin.Context, e *bizerror.BizError, cfg handlerConfig) {
 		"method", c.Request.Method,
 		"path", c.Request.URL.Path,
 		"tx_id", reqctx.TxIDOf(c))
-	r := response.ApiResponse{Code: status, ErrMsg: message, TxID: reqctx.TxIDOf(c)}
-	response.Write(c, &r)
+	response.Fail(c, message, response.WithCode(code))
 }

@@ -12,7 +12,7 @@ module 名为占位、业务方经 `replace` 本地引用；2026-10-20 起 git �
 security-management 并列，仓库级交接见上级 [HANDOVER](../HANDOVER.md)）。
 被两类业务系统 import：
 
-- **RESTful API 业务**（Gin）：用 `api/*`（reqctx/request/response/errresp 与
+- **RESTful API 业务**（Gin）：用 `api/*`（reqctx/request/response 与
   `api/middleware/*` 四子包）+ 存储包
 - **内部定时器业务**（无接口层）：只用跨层包 + 存储包
 
@@ -65,10 +65,9 @@ api/reqctx        gin ↔ rctx 绑定：五请求头常量、CtxRuntimeContext k
 api/request       请求参数：PageQuery、Require（必填校验）、Wrap[VO]
                   （DTO→service VO：字段名对齐 + 弱类型转换，布尔按 units.Bool）
 api/response      统一响应体 ApiResponse（code/success/errMsg/data/txId）：
-                  OK/Fail 出口 + Option（WithCode/WithErrMsg）+ Wrap[DTO]
-                  （VO→DTO：time→字符串、bool→int）；Write 供库内组件写回
-api/errresp       错误码 → HTTP 状态码映射：DefaultStatusMap/StatusFor
-                  （供 errorhandler 取状态码；写回用 response.Fail）
+                  OK/Fail 唯一两个出口（write 私有）+ Option
+                  （WithCode/WithErrMsg）+ Wrap[DTO]（VO→DTO：
+                  time→yyyyMMddHHmmss、bool→int）
 api/middleware    按处理流程点分包（根包仅承载注册顺序契约与全栈测试）：
                   accesslog → errorhandler → recovery → runtimecontext
                   （顺序固定；三日志中间件零持有日志对象，经 logx 全局出口）
@@ -92,23 +91,25 @@ logx 依赖 config（段读取）；batch/search 依赖各自根包；所有存�
 
 ## 4. 核心对外契约（wire 格式）
 
-### 4.1 统一响应 ApiResponse（五字段恒序列化，成功/失败同构）
+### 4.1 统一响应 ApiResponse（五字段恒序列化，成功/失败同构，HTTP 恒 200）
 
 ```json
-{"code":200,"success":true,"errMsg":"","data":{...},"txId":"abc"}
-{"code":200,"success":false,"errMsg":"user 999 not found","data":null,"txId":"abc"}
+{"code":1,"success":true,"errMsg":"","data":{...},"txId":"abc"}
+{"code":0,"success":false,"errMsg":"user 999 not found","data":null,"txId":"abc"}
 ```
 
-- `code` = HTTP 状态码（数字）；txId 取 RuntimeContext 记录的事务 ID
-- 出口两个：`OK(c, data, opts...)`（code 默认 200、errMsg 可选经 WithErrMsg）；
-  `Fail(c, errMsg, opts...)`（code 默认 **200** 可 WithCode 修改、success 恒
-  false、errMsg 必填、data 恒 nil）；**data 由 handler 指定**（single 或集合，
-  分页 pageable 整体作为 data）
-- VO → DTO 出参转换：time → "yyyy-MM-dd HH:mm:ss" 字符串、bool → int 1/0
-  （`response.Wrap` 或 units 原语）
-- 常规业务错误统一走 `c.Error(err)` → ErrorHandler（按 DefaultStatusMap 映射
-  code），handler 不自写错误响应；字符串错误码与 Details 不出参，随
-  `business error` 日志留痕
+- **HTTP 状态码恒 200**（与传输层解耦）；**code 是业务自己的错误码**：
+  OK 默认 1、Fail 默认 0、WithCode 修改；txId 取 RuntimeContext 的 ID
+- 构建响应**只有 OK/Fail 两个入口**（write 私有；errorhandler/recovery 库内
+  也走 Fail）：`OK(c, data, opts...)`（errMsg 可选经 WithErrMsg）；
+  `Fail(c, errMsg, opts...)`（success 恒 false、errMsg 必填、data 恒 nil）；
+  **data 由 handler 指定**（single 或集合，分页 pageable 整体作为 data）
+- VO → DTO 出参转换：time → yyyyMMddHHmmss 字符串（与入参同格式）、
+  bool → int 1/0（`response.Wrap` 或 units 原语）
+- 常规业务错误统一走 `c.Error(err)` → ErrorHandler：模块码经
+  `WithCodeMap` 映射业务 code（未映射 0；库内无默认业务码表，原 errresp
+  包已删除），handler 不自写错误响应；字符串错误码与 Details 不出参，
+  随 `business error` 日志留痕
 
 ### 4.2 分页（2026-10-21 拍板新契约）
 
@@ -147,7 +148,7 @@ WithID(id).WithName("job"))`。
   `bizerror.NewError`；出口直出 Message 不翻译
 - 回退链：请求语言 → 基础语言（只收窄不放宽）→ 默认语言 → key 原文
 - 删除确认等带实体名的消息：模板 `{0}` + `InsertArgs(name)`；模块码经
-  `WithStatusMap` 映射状态码
+  `WithCodeMap` 映射业务 code
 
 ### 4.5 日志（logx，2026-10-21 拍板重构）
 
@@ -260,7 +261,7 @@ make integration  # 集成测试：先 docker compose -f docker-compose.test.yml
 - 配置只写 application.yml（+环境变量覆盖），不写代码里；新增组件配置 =
   组件提供私有配置结构 + `Init(m)` + GetSection 绑定 + 存在才校验
 - 出口对 BizError 按**自身 Code** 映射状态码，根因不参与（要 404 语义请
-  自带 CodeNotFound，经 WithStatusMap 映射模块码）
+  自带模块码，经 WithCodeMap 映射业务 code）
 - GORM 出口裸 `*gorm.DB`，链式调用记得 `.WithContext(ctx)`
 - 事务内调存储过程：`conn.FromGorm(tx)` 取 Execer → `conn.CallProcTx`
 - 新增跨层共享概念：在 `common/` 加零依赖小包并加进 depguard strict 白名单

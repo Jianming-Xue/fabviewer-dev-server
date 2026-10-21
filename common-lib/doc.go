@@ -6,7 +6,7 @@
 //
 //	接口访问层  → api 按功能分包：reqctx（请求运行时上下文的 gin 侧绑定）、
 //	              request（请求参数对象解析）、response（统一响应体写回）、
-//	              errresp（错误响应与状态码映射）、api/middleware 按处理
+//	              response（ApiResponse 统一响应/OK/Fail/VO→DTO）、api/middleware 按处理
 //	              流程点分包（accesslog/errorhandler/recovery/runtimecontext）
 //	              ——仅此层可 import，Gin 依赖从这里开始
 //	存储层      → storage/oracle、storage/clickhouse、storage/opensearch、

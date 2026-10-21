@@ -16,7 +16,7 @@
 // 每文件恰好一个导出的 map[string]string 变量（复合字面量、键值均为字符串
 // 字面量）。输出 errors_gen.go 四部分（key 要求形如导出标识符）：
 //
-//   - Code 常量（WithStatusMap 等按码映射时引用）
+//   - Code 常量（WithCodeMap 等按码映射时引用）
 //   - ErrorCode：本模块多语言字典句柄（bizerror.New(ctx, usererrors.ErrorCode,
 //     code) 据此按请求语言查模板）
 //   - New(ctx, code)：构造函数底层实现
@@ -294,7 +294,7 @@ func generate(pkg string, defLang i18n.Language, files map[i18n.Language]msgFile
 	sb.WriteString("\t\"github.com/fab-viewer/common-lib/common/bizerror\"\n")
 	sb.WriteString("\t\"github.com/fab-viewer/common-lib/common/i18n\"\n")
 	sb.WriteString(")\n\n")
-	sb.WriteString("// Code 常量即错误文件中的 key，供 WithStatusMap 等按码映射时引用。\n")
+	sb.WriteString("// Code 常量即错误文件中的 key，供 WithCodeMap 等按码映射时引用。\n")
 	sb.WriteString("const (\n")
 	for _, k := range keys {
 		fmt.Fprintf(&sb, "\tCode%s = bizerror.Code(%q)\n", k, k)

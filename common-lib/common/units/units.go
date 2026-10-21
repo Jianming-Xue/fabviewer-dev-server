@@ -60,8 +60,8 @@ func BoolToInt(b bool) int {
 	return 0
 }
 
-// FormatDateTime 把时间格式化为出参展示格式 "yyyy-MM-dd HH:mm:ss"
-// （time.DateTime）；入参方向解析见 ParseDate/ParseDateTime。
+// FormatDateTime 把时间格式化为出参字符串，格式与入参 ParseDateTime
+// 统一（yyyyMMddHHmmss，见 LayoutDateTime）。
 func FormatDateTime(t time.Time) string {
-	return t.Format(time.DateTime)
+	return t.Format(LayoutDateTime)
 }

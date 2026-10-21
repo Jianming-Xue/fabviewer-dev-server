@@ -91,5 +91,5 @@ func TestBoolToInt(t *testing.T) {
 
 func TestFormatDateTime(t *testing.T) {
 	got := units.FormatDateTime(time.Date(2026, 10, 21, 10, 0, 0, 0, time.Local))
-	assert.Equal(t, "2026-10-21 10:00:00", got)
+	assert.Equal(t, "20261021100000", got)
 }

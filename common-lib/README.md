@@ -29,7 +29,7 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 | `common/logx`（日志完整工具：Init + 包级函数，见下节） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/i18n`（多语言表能力，仅依赖标准库与 `common/rctx`） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/units`（输入转换原语：int 布尔、日期/毫秒时间戳解析，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `api/reqctx`（运行时上下文 gin 侧绑定）、`api/request`（请求参数解析）、`api/response`（统一响应体写回）、`api/errresp`（错误响应与状态码映射）、`api/middleware/*`（accesslog / errorhandler / recovery / runtimecontext 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
+| `api/reqctx`（运行时上下文 gin 侧绑定）、`api/request`（请求参数解析/校验/DTO 包装）、`api/response`（统一响应体 ApiResponse 与 VO→DTO 转换）、`api/middleware/*`（accesslog / errorhandler / recovery / runtimecontext 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `cmd/server`（组装全家桶：NewEngine 引擎装配 / Init 读 server 段 / NewServer+Run 优雅停机 / wire ProviderSet） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/clickhouse`（`config`/`batch` 子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
 
@@ -148,7 +148,7 @@ replace github.com/fab-viewer/common-lib => ../../services/common-lib
 `cmd/server`，业务只传模块错误码表并注册路由：
 
 ```go
-r := server.NewEngine(usererrors.StatusMap()) // 模块码表是业务唯一必传差异
+r := server.NewEngine(usererrors.CodeMap()) // 模块业务码表是业务唯一必传差异
 
 r.GET("/api/users", func(c *gin.Context) {
     q := request.PageQuery(c) // 解析 ?pageIndex=&pageSize=，非法值回退默认
@@ -251,28 +251,30 @@ check-layers:
 
 ## 统一响应体契约（ApiResponse）
 
-成功/失败同构（`response.ApiResponse`，五字段恒序列化）：**code 即 HTTP
-状态码（数字）**，**txId 取自 RuntimeContext 记录的事务 ID**（请求头 txId
-透传优先，未携带时由 `runtimecontext.FillRuntimeContext` 生成兜底）。
-**data 由业务 handler 指定**：single 对象或 multi 对象集合（分页 pageable
-整体作为 data）。
+成功/失败同构（`response.ApiResponse`，五字段恒序列化），**HTTP 状态码恒
+200**（传输层只承载送达，业务结果由 code/success 表达）。**code 是业务
+自己的错误码**：OK 默认 **1**、Fail 默认 **0**，经 WithCode 修改；
+**txId 取自 RuntimeContext 记录的事务 ID**（请求头 txId 透传优先，未携带
+时由 `runtimecontext.FillRuntimeContext` 生成兜底）；**data 由业务 handler
+指定**：single 对象或 multi 对象集合（分页 pageable 整体作为 data）。
 
 ```json
-{"code":200,"success":true,"errMsg":"",
+{"code":1,"success":true,"errMsg":"",
  "data":{"pageIndex":2,"pageSize":10,"totalSize":57,"totalPage":6,"data":[...]},
  "txId":"0c8f..."}
 ```
 
 ```json
-{"code":200,"success":false,"errMsg":"参数 email 格式不正确","data":null,"txId":"0c8f..."}
+{"code":0,"success":false,"errMsg":"参数 email 格式不正确","data":null,"txId":"0c8f..."}
 ```
 
-- 出口只有两个：`response.OK(c, data, opts...)`——code 默认 **200**、
+- 构建响应只有两个入口：`response.OK(c, data, opts...)`——code 默认 1、
   success=true、errMsg 默认空串（可 `WithErrMsg` 补充提示）；
-  `response.Fail(c, errMsg, opts...)`——success 恒 false、**data 恒 nil**、
-  errMsg 必填（空串兜底 "internal error"）、code 默认 **200** 可
-  `WithCode` 修改（HTTP 状态码跟随）。常规业务错误仍走 `c.Error(err)` 交
-  errorhandler 按码表映射（如上例 404/409 场景）
+  `response.Fail(c, errMsg, opts...)`——code 默认 0（可 `WithCode` 换成
+  业务自己的错误码）、success 恒 false、**data 恒 nil**、errMsg 必填
+  （空串兜底 "internal error"）。常规业务错误走 `c.Error(err)` 交
+  errorhandler 统一处理：模块错误码经 `errorhandler.WithCodeMap` 映射成
+  业务 code 进响应体（未映射 0），errMsg 直出 Message
 - 分页请求参数为 `pageIndex`/`pageSize`（`request.PageQuery` 解析为
   `paging.PageRequest`；非法回退默认值 **1/10**，pageSize 上限
   `MaxPageSize=100`）；分页出参 **pageable**（`paging.Pageable`：
@@ -284,9 +286,9 @@ check-layers:
 
 ### 出参转换（VO → DTO，common/units + response.Wrap）
 
-- time.Time → **"yyyy-MM-dd HH:mm:ss"** 字符串（`units.FormatDateTime`，
-  零值转空串）；bool → **int**（`units.BoolToInt`：true→1 / false→0）；
-  整数 → 字符串（如雪花 ID 字段）
+- time.Time → **yyyyMMddHHmmss** 字符串（`units.FormatDateTime`，与入参
+  格式同族；零值转空串）；bool → **int**（`units.BoolToInt`：true→1 /
+  false→0）；整数 → 字符串（如雪花 ID 字段）
 - `response.Wrap[DTO](vo)`：字段名一致（mapstructure/json tag 优先、忽略
   大小写）自动拷贝 + 上述 wire 转换（嵌套 struct/slice/map/指针递归）；
   其余类型不匹配报错（不做弱转换）。服务层自行组装 DTO 的项目（如
@@ -421,10 +423,11 @@ return usererrors.NewUserNotFound(ctx).
 _ = c.Error(usererrors.NewConfirmDeleteUser(ctx).InsertArgs(u.Name))
 // → zh："确认删除用户 zhangsan 吗？"  en："confirm deleting user zhangsan?"
 
-// 4. 出口（ErrorHandler）直出 Message；模块码经 WithStatusMap 映射状态码
+// 4. 出口（ErrorHandler）直出 Message；模块码经 WithCodeMap 映射业务 code
+//    （HTTP 恒 200，映射值进响应体 code）
 r.Use(errorhandler.ErrorHandler(
-    errorhandler.WithStatusMap(map[bizerror.Code]int{
-        usererrors.CodeUserNotFound: http.StatusNotFound,
+    errorhandler.WithCodeMap(map[bizerror.Code]int{
+        usererrors.CodeUserNotFound: 1001,
     }), ...)
 ```
 
@@ -438,22 +441,15 @@ r.Use(errorhandler.ErrorHandler(
   模块默认语言 → key 原文
 - 多模块各自字典互不感知（无全局注册、无跨模块 key 冲突）；表并发安全
 
-业务错误码 → HTTP 状态码映射（`errresp.DefaultStatusMap`，可经 `errorhandler.WithStatusMap` 增补；
-映射结果同时决定 HTTP 状态与响应 code）：
-
-| bizerror.Code | HTTP（即响应 code） |
-|---|---|
-| OK | 200 |
-| VALIDATION_ERROR | 400 |
-| UNAUTHORIZED | 401 |
-| FORBIDDEN | 403 |
-| NOT_FOUND | 404 |
+业务错误码 → 响应体业务 code 的映射**完全由业务提供**（`errorhandler.
+WithCodeMap`，如 `{usererrors.CodeUserNotFound: 1001}`；未映射的码含内置码
+一律按 0；HTTP 状态码恒 200，库内不设默认业务码表）。
 | CONFLICT | 409 |
 | RATE_LIMITED | 429 |
 | INTERNAL_ERROR / DB_ERROR | 500 |
 | UPSTREAM_ERROR | 502 |
 
-- 模块码（如 `usererrors.CodeUserNotFound`）经 `WithStatusMap` 映射状态码；
+- 模块码（如 `usererrors.CodeUserNotFound`）经 `WithCodeMap` 映射成业务 code；
   未映射的自定义码按 500 处理。
 - 未知错误的根因只进日志不进响应（`ErrorHandler` 统一兜底）。
 - `gorm.ErrRecordNotFound` / `sql.ErrNoRows` 在 `ErrorHandler` 中内置翻译为 404。

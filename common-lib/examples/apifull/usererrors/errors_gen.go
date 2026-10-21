@@ -9,7 +9,7 @@ import (
 	"github.com/fab-viewer/common-lib/common/i18n"
 )
 
-// Code 常量即错误文件中的 key，供 WithStatusMap 等按码映射时引用。
+// Code 常量即错误文件中的 key，供 WithCodeMap 等按码映射时引用。
 const (
 	CodeConfirmDeleteUser = bizerror.Code("ConfirmDeleteUser")
 	CodeInvalidUserID     = bizerror.Code("InvalidUserID")

@@ -26,7 +26,7 @@ func TestOK(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	b := testutil.Decode(t, w)
-	assert.Equal(t, http.StatusOK, b.Code, "code 即 HTTP 状态码，默认 200")
+	assert.Equal(t, 1, b.Code, "业务 code 默认 1")
 	assert.True(t, b.Success)
 	assert.Empty(t, b.ErrMsg, "成功时 errMsg 默认空串（字段保留，同构）")
 	assert.JSONEq(t, `{"k":"v"}`, string(b.Data), "data 由 handler 给定")
@@ -88,22 +88,22 @@ func TestFail(t *testing.T) {
 		wantErrMsg string
 	}{
 		{
-			name:       "默认 code 200",
+			name:       "默认 code 0",
 			errMsg:     "boom",
-			wantCode:   http.StatusOK,
+			wantCode:   0,
 			wantErrMsg: "boom",
 		},
 		{
-			name:       "WithCode 修改 code（HTTP 跟随）",
+			name:       "WithCode 换业务码",
 			errMsg:     "user not found",
-			opts:       []response.Option{response.WithCode(http.StatusNotFound)},
-			wantCode:   http.StatusNotFound,
+			opts:       []response.Option{response.WithCode(1001)},
+			wantCode:   1001,
 			wantErrMsg: "user not found",
 		},
 		{
 			name:       "空 errMsg 兜底 internal error",
 			errMsg:     "",
-			wantCode:   http.StatusOK,
+			wantCode:   0,
 			wantErrMsg: "internal error",
 		},
 	}
@@ -113,7 +113,7 @@ func TestFail(t *testing.T) {
 			r.GET("/f", func(c *gin.Context) { response.Fail(c, tt.errMsg, tt.opts...) })
 
 			w := testutil.DoGet(r, "/f")
-			require.Equal(t, tt.wantCode, w.Code, "HTTP 状态码跟随 code")
+			require.Equal(t, http.StatusOK, w.Code, "HTTP 状态码恒 200，与业务 code 解耦")
 
 			b := testutil.Decode(t, w)
 			assert.Equal(t, tt.wantCode, b.Code)
@@ -124,15 +124,25 @@ func TestFail(t *testing.T) {
 	}
 }
 
-func TestWriteSkipsWhenWritten(t *testing.T) {
+func TestFailSkipsWhenWritten(t *testing.T) {
 	r := testutil.NewTestEngine()
-	r.GET("/w", func(c *gin.Context) {
+	r.GET("/f", func(c *gin.Context) {
 		c.String(http.StatusOK, "first")
-		resp := response.ApiResponse{Code: http.StatusOK, Success: true, Data: "ignored"}
-		response.Write(c, &resp)
+		response.Fail(c, "ignored")
 	})
 
-	w := testutil.DoGet(r, "/w")
+	w := testutil.DoGet(r, "/f")
+	assert.Equal(t, "first", w.Body.String(), "已写过的响应不得被覆盖")
+}
+
+func TestOKSkipsWhenWritten(t *testing.T) {
+	r := testutil.NewTestEngine()
+	r.GET("/o", func(c *gin.Context) {
+		c.String(http.StatusOK, "first")
+		response.OK(c, "ignored")
+	})
+
+	w := testutil.DoGet(r, "/o")
 	assert.Equal(t, "first", w.Body.String(), "已写过的响应不得被覆盖")
 }
 
@@ -159,7 +169,7 @@ func TestWrap(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "zhangsan", dto.Name)
 		assert.Equal(t, 1, dto.Enabled, "bool true → int 1")
-		assert.Equal(t, "2026-10-21 10:00:00", dto.CreatedAt, "time.Time → yyyy-MM-dd HH:mm:ss")
+		assert.Equal(t, "20261021100000", dto.CreatedAt, "time.Time → yyyyMMddHHmmss（与入参同格式）")
 	})
 
 	t.Run("false 转 0", func(t *testing.T) {

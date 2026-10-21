@@ -2,7 +2,6 @@ package recovery
 
 import (
 	"fmt"
-	"net/http"
 	"runtime/debug"
 
 	"github.com/gin-gonic/gin"
@@ -33,10 +32,8 @@ func Recovery() gin.HandlerFunc {
 				c.Abort()
 				return
 			}
-			resp := response.ApiResponse{
-				Code: http.StatusInternalServerError, ErrMsg: "internal error", TxID: reqctx.TxIDOf(c),
-			}
-			c.AbortWithStatusJSON(http.StatusInternalServerError, resp)
+			response.Fail(c, "internal error") // HTTP 恒 200，构建只有 OK/Fail 两个入口
+			c.Abort()
 		}()
 		c.Next()
 	}

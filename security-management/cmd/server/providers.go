@@ -67,7 +67,7 @@ func provideUserRepo(st *storage) domain.UserRepository { return st.repo }
 // provideRouter 组装引擎与业务路由：四中间件固定顺序与 /healthz 探活由
 // server.NewEngine 承载，模块错误码表是业务唯一必传差异。
 func provideRouter(users services.UserService) *gin.Engine {
-	r := server.NewEngine(usererrors.StatusMap())
+	r := server.NewEngine(usererrors.CodeMap())
 	api.RegisterRoutes(r, users)
 	return r
 }
