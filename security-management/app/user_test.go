@@ -8,22 +8,25 @@ import (
 	"strings"
 	"testing"
 
+	server "github.com/fab-viewer/common-lib/cmd/server"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/fab-viewer/common-lib/common/logx"
 	"github.com/fab-viewer/common-lib/common/paging"
 	"github.com/fab-viewer/security-management/api"
 	"github.com/fab-viewer/security-management/app"
 	"github.com/fab-viewer/security-management/services"
 	"github.com/fab-viewer/security-management/storage/memory"
+	"github.com/fab-viewer/security-management/usererrors"
 )
 
 // newTestServer 组装内存版服务与路由（i18n 全链路可用）。
 func newTestServer() *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	return api.NewRouter(logx.Nop(), app.NewUserService(memory.NewUserRepo()))
+	r := server.NewEngine(usererrors.StatusMap())
+	api.RegisterRoutes(r, app.NewUserService(memory.NewUserRepo()))
+	return r
 }
 
 // respBody 是统一响应体解码目标。

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -335,4 +336,43 @@ func TestLookupValue(t *testing.T) {
 
 	_, ok = lookupValue(m, "x.deeper")
 	assert.False(t, ok, "标量下继续下钻视为不存在")
+}
+
+func TestBind(t *testing.T) {
+	type durations struct {
+		Addr    string        `mapstructure:"addr"`
+		Timeout time.Duration `mapstructure:"timeout"`
+		Level   string        `mapstructure:"level"`
+	}
+
+	t.Run("保留目标已有值、map 中的键覆盖", func(t *testing.T) {
+		out := durations{Addr: ":8080", Timeout: 30 * time.Second, Level: "info"}
+		err := Bind(map[string]any{"addr": ":9090", "level": "debug"}, &out)
+		require.NoError(t, err)
+		assert.Equal(t, ":9090", out.Addr, "出现的键覆盖默认值")
+		assert.Equal(t, 30*time.Second, out.Timeout, "未出现的键保留默认值")
+		assert.Equal(t, "debug", out.Level)
+	})
+
+	t.Run("字符串时长转 Duration", func(t *testing.T) {
+		out := durations{}
+		err := Bind(map[string]any{"timeout": "5s"}, &out)
+		require.NoError(t, err)
+		assert.Equal(t, 5*time.Second, out.Timeout)
+	})
+
+	t.Run("弱类型转换", func(t *testing.T) {
+		out := struct {
+			N int `mapstructure:"n"`
+		}{}
+		err := Bind(map[string]any{"n": "200"}, &out)
+		require.NoError(t, err)
+		assert.Equal(t, 200, out.N)
+	})
+
+	t.Run("无法转换时报错", func(t *testing.T) {
+		out := durations{}
+		err := Bind(map[string]any{"timeout": "abc"}, &out)
+		assert.Error(t, err)
+	})
 }

@@ -26,8 +26,9 @@ func WithSkipPaths(paths ...string) Option {
 }
 
 // AccessLog 记录访问日志：method/path/status/latency_ms/client_ip/
-// tx_id/tx_name/user/bytes。log 为 nil 时使用 logx.Default()。
-func AccessLog(log logx.Logger, opts ...Option) gin.HandlerFunc {
+// tx_id/tx_name/user/bytes。经全局日志出口 logx 记录（Init 落位；测试经
+// logx.SetLogger 注入），组件零持有日志对象，无 Init 时序问题。
+func AccessLog(opts ...Option) gin.HandlerFunc {
 	cfg := accessLogConfig{skipPaths: map[string]struct{}{
 		"/healthz": {},
 		"/livez":   {},
@@ -35,9 +36,6 @@ func AccessLog(log logx.Logger, opts ...Option) gin.HandlerFunc {
 	}}
 	for _, opt := range opts {
 		opt(&cfg)
-	}
-	if log == nil {
-		log = logx.Default()
 	}
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -47,7 +45,7 @@ func AccessLog(log logx.Logger, opts ...Option) gin.HandlerFunc {
 			return
 		}
 		rc := reqctx.RuntimeContextOf(c)
-		log.Info("access",
+		logx.Info("access",
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
 			"status", c.Writer.Status(),

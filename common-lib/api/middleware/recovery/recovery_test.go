@@ -11,13 +11,12 @@ import (
 
 	"github.com/fab-viewer/common-lib/api/internal/testutil"
 	"github.com/fab-viewer/common-lib/api/middleware/recovery"
-	"github.com/fab-viewer/common-lib/common/logx"
 )
 
 func TestRecoveryPanickingHandler(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(recovery.Recovery(log))
+	r.Use(recovery.Recovery())
 	r.GET("/boom", func(_ *gin.Context) { panic("something exploded") })
 
 	w := testutil.DoGet(r, "/boom")
@@ -46,9 +45,9 @@ func TestRecoveryPanickingHandler(t *testing.T) {
 }
 
 func TestRecoveryAfterPartialWrite(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(recovery.Recovery(log))
+	r.Use(recovery.Recovery())
 	r.GET("/partial", func(c *gin.Context) {
 		c.String(http.StatusOK, "partial response")
 		panic("late panic")
@@ -60,27 +59,13 @@ func TestRecoveryAfterPartialWrite(t *testing.T) {
 }
 
 func TestRecoveryNormalPassThrough(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(recovery.Recovery(log))
+	r.Use(recovery.Recovery())
 	r.GET("/ok", func(c *gin.Context) { c.String(http.StatusOK, "fine") })
 
 	w := testutil.DoGet(r, "/ok")
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "fine", w.Body.String())
 	assert.Empty(t, log.Snapshot(), "无 panic 不产生日志")
-}
-
-func TestRecoveryNilLoggerUsesDefault(t *testing.T) {
-	capture := &testutil.CaptureLogger{}
-	logx.SetLogger(capture)
-	t.Cleanup(func() { logx.SetLogger(logx.Nop()) })
-
-	r := testutil.NewTestEngine()
-	r.Use(recovery.Recovery(nil)) // nil → logx.Default()
-	r.GET("/boom", func(_ *gin.Context) { panic("x") })
-
-	w := testutil.DoGet(r, "/boom")
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-	assert.Len(t, capture.Snapshot(), 1, "nil logger 应回退到 logx.Default()")
 }

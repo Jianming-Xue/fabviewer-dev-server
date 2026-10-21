@@ -62,6 +62,17 @@ func (l *CaptureLogger) Snapshot() []CapturedRecord {
 	return out
 }
 
+// CaptureLog 注入 CaptureLogger 为全局日志出口（logx.SetLogger），并注册
+// 测试结束恢复为 Nop，返回该捕获器。用于验证经全局出口记录日志的组件
+// （零持有日志对象的中间件等）。
+func CaptureLog(t *testing.T) *CaptureLogger {
+	t.Helper()
+	l := &CaptureLogger{}
+	logx.SetLogger(l)
+	t.Cleanup(func() { logx.SetLogger(logx.Nop()) })
+	return l
+}
+
 // NewTestEngine 返回处于 TestMode 的裸 gin 引擎。
 func NewTestEngine() *gin.Engine {
 	gin.SetMode(gin.TestMode)

@@ -22,12 +22,12 @@ import (
 // TestFullStack 验证推荐的注册顺序下各中间件协作：
 // accesslog → errorhandler → recovery → runtimecontext → 路由。
 func TestFullStack(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
 	r.Use(
-		accesslog.AccessLog(log),
-		errorhandler.ErrorHandler(log),
-		recovery.Recovery(log),
+		accesslog.AccessLog(),
+		errorhandler.ErrorHandler(),
+		recovery.Recovery(),
 		runtimecontext.FillRuntimeContext(),
 	)
 	r.GET("/ok", func(c *gin.Context) { response.OK(c, gin.H{"x": 1}) })

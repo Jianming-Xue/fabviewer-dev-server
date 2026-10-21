@@ -28,6 +28,7 @@ require (
 	github.com/godror/godror v0.51.5 // indirect
 	github.com/godror/knownpb v0.3.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/wire v0.7.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

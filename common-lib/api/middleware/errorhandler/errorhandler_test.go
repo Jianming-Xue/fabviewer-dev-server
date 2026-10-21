@@ -18,7 +18,6 @@ import (
 	"github.com/fab-viewer/common-lib/api/middleware/errorhandler"
 	"github.com/fab-viewer/common-lib/api/middleware/runtimecontext"
 	"github.com/fab-viewer/common-lib/common/bizerror"
-	"github.com/fab-viewer/common-lib/common/logx"
 )
 
 // errBody 是错误响应的解码目标（response.Response）。
@@ -57,9 +56,9 @@ func TestErrorHandlerCodeMap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			log := &testutil.CaptureLogger{}
+			testutil.CaptureLog(t)
 			r := testutil.NewTestEngine()
-			r.Use(errorhandler.ErrorHandler(log))
+			r.Use(errorhandler.ErrorHandler())
 			r.GET("/e", func(c *gin.Context) { _ = c.Error(tt.err) })
 
 			w := testutil.DoGet(r, "/e")
@@ -77,10 +76,10 @@ func TestErrorHandlerCodeMap(t *testing.T) {
 func TestErrorHandlerFvMessageDirectOutput(t *testing.T) {
 	// BizError 的 Message 创建时已翻译（bizerror.New 查模块字典 + InsertArgs），
 	// 出口直接输出，不做翻译。
-	log := &testutil.CaptureLogger{}
+	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
 	r.Use(
-		errorhandler.ErrorHandler(log),
+		errorhandler.ErrorHandler(),
 		runtimecontext.FillRuntimeContext(),
 	)
 	r.GET("/e", func(c *gin.Context) {
@@ -100,9 +99,9 @@ func TestErrorHandlerFvMessageDirectOutput(t *testing.T) {
 }
 
 func TestErrorHandlerDetailsToLogNotResponse(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(errorhandler.ErrorHandler(log))
+	r.Use(errorhandler.ErrorHandler())
 	r.GET("/e", func(c *gin.Context) {
 		_ = c.Error(bizerror.NewError(bizerror.CodeValidation, "参数非法").AttachError(nil, map[string]any{"field": "email"}))
 	})
@@ -127,9 +126,9 @@ func TestErrorHandlerDetailsToLogNotResponse(t *testing.T) {
 }
 
 func TestErrorHandlerContextCanceled(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(errorhandler.ErrorHandler(log))
+	r.Use(errorhandler.ErrorHandler())
 	r.GET("/e", func(c *gin.Context) { _ = c.Error(context.Canceled) })
 
 	w := testutil.DoGet(r, "/e")
@@ -142,9 +141,9 @@ func TestErrorHandlerContextCanceled(t *testing.T) {
 }
 
 func TestErrorHandlerUnknownError(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(errorhandler.ErrorHandler(log))
+	r.Use(errorhandler.ErrorHandler())
 	r.GET("/e", func(c *gin.Context) { _ = c.Error(errors.New("password is hunter2")) })
 
 	w := testutil.DoGet(r, "/e")
@@ -160,9 +159,9 @@ func TestErrorHandlerUnknownError(t *testing.T) {
 }
 
 func TestErrorHandlerWithStatusMap(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(errorhandler.ErrorHandler(log, errorhandler.WithStatusMap(map[bizerror.Code]int{
+	r.Use(errorhandler.ErrorHandler(errorhandler.WithStatusMap(map[bizerror.Code]int{
 		bizerror.Code("USER_DISABLED"): http.StatusForbidden,
 	})))
 	r.GET("/e", func(c *gin.Context) { _ = c.Error(bizerror.NewError(bizerror.Code("USER_DISABLED"), "禁用")) })
@@ -172,9 +171,9 @@ func TestErrorHandlerWithStatusMap(t *testing.T) {
 }
 
 func TestErrorHandlerWithMessageFunc(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(errorhandler.ErrorHandler(log, errorhandler.WithMessageFunc(func(_ *gin.Context, _ *bizerror.BizError) string {
+	r.Use(errorhandler.ErrorHandler(errorhandler.WithMessageFunc(func(_ *gin.Context, _ *bizerror.BizError) string {
 		return "overridden"
 	})))
 	r.GET("/e", func(c *gin.Context) { _ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "raw message")) })
@@ -185,7 +184,7 @@ func TestErrorHandlerWithMessageFunc(t *testing.T) {
 
 	// messageFn 返回空串时保留原 errMsg
 	r2 := testutil.NewTestEngine()
-	r2.Use(errorhandler.ErrorHandler(log, errorhandler.WithMessageFunc(func(_ *gin.Context, _ *bizerror.BizError) string {
+	r2.Use(errorhandler.ErrorHandler(errorhandler.WithMessageFunc(func(_ *gin.Context, _ *bizerror.BizError) string {
 		return ""
 	})))
 	r2.GET("/e", func(c *gin.Context) { _ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "kept message")) })
@@ -194,9 +193,9 @@ func TestErrorHandlerWithMessageFunc(t *testing.T) {
 }
 
 func TestErrorHandlerMultipleErrorsUsesLast(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(errorhandler.ErrorHandler(log))
+	r.Use(errorhandler.ErrorHandler())
 	r.GET("/e", func(c *gin.Context) {
 		_ = c.Error(bizerror.NewError(bizerror.CodeInternal, "first"))
 		_ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "second"))
@@ -209,9 +208,9 @@ func TestErrorHandlerMultipleErrorsUsesLast(t *testing.T) {
 }
 
 func TestErrorHandlerSkipsWhenWritten(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(errorhandler.ErrorHandler(log))
+	r.Use(errorhandler.ErrorHandler())
 	r.GET("/e", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"written": true})
 		_ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "ignored"))
@@ -222,25 +221,12 @@ func TestErrorHandlerSkipsWhenWritten(t *testing.T) {
 }
 
 func TestErrorHandlerNoErrors(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(errorhandler.ErrorHandler(log))
+	r.Use(errorhandler.ErrorHandler())
 	r.GET("/ok", func(c *gin.Context) { c.String(http.StatusOK, "fine") })
 
 	w := testutil.DoGet(r, "/ok")
 	assert.Equal(t, "fine", w.Body.String())
 	assert.Empty(t, log.Snapshot())
-}
-
-func TestErrorHandlerNilLoggerUsesDefault(t *testing.T) {
-	capture := &testutil.CaptureLogger{}
-	logx.SetLogger(capture)
-	t.Cleanup(func() { logx.SetLogger(logx.Nop()) })
-
-	r := testutil.NewTestEngine()
-	r.Use(errorhandler.ErrorHandler(nil))
-	r.GET("/e", func(c *gin.Context) { _ = c.Error(errors.New("boom")) })
-
-	testutil.DoGet(r, "/e")
-	assert.Len(t, capture.Snapshot(), 1, "nil logger 应回退到 logx.Default()")
 }

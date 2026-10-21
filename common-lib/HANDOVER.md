@@ -68,7 +68,10 @@ api/response      统一响应体 apiresponse：Response 五字段恒序列化 +
                   OK/Created/NoContent/OKPage/Write 写回
 api/errresp       错误响应：Fail、DefaultStatusMap/StatusFor（Code → HTTP 状态码）
 api/middleware    按处理流程点分包（根包仅承载注册顺序契约与全栈测试）：
-                  accesslog → errorhandler → recovery → runtimecontext（顺序固定）
+                  accesslog → errorhandler → recovery → runtimecontext
+                  （顺序固定；三日志中间件零持有日志对象，经 logx 全局出口）
+cmd/server        组装全家桶：NewEngine（引擎+四中间件+/healthz）、Init
+                  （server 段）、NewServer+Run（优雅停机）、ProviderSet（wire）
 storage/oracle/conn        Open、DB 三通道（GORM/SQL/存储过程）、Cursor、driverAdapter
 storage/oracle/config      Config/WithDefaults/Validate/BuildDSN
 storage/oracle/base        BasePO 审计基类（GORM 钩子自动填 CreatedBy 等，取 rctx.User）
@@ -160,7 +163,9 @@ WithID(id).WithName("job"))`。
   覆盖 `log.file.maxSize`；覆盖值为字符串原样进 map，绑定/校验阶段按宽松
   规则转换（"200" 算数字、"true" 算布尔）
 - `GetSection[T](m, "log.file")` 绑定到目标结构体（mapstructure tag 优先，
-  无 tag 按完整字段名忽略大小写）
+  无 tag 按完整字段名忽略大小写）；`Bind(m, out)` 把段绑定到**已存在**的
+  目标（缺省即默认值的组件自治模式：目标已有值保留、出现的键覆盖），两者
+  均开启 WeaklyTypedInput + 字符串时长钩子（"5s" → time.Duration）
 
 ## 5. 开发与验证
 
@@ -181,24 +186,40 @@ make integration  # 集成测试：先 docker compose -f docker-compose.test.yml
 含四 header 与分页示例）。业务服务装配自证：security-management 的
 `go run ./cmd/server`（memory 模式自举，读 application.yml）。
 
-## 6. 进行中：cmd/server 统一装配 + wire（2026-10-21 拍板，未落地）
+## 6. cmd/server 统一装配 + wire（2026-10-21 拍板，已落地）
 
-- **全家桶 + 组件自治**：`cmd/server` 包静态 import 全部组件，CreateServer
-  依次调用各组件的 `Init(m)`；是否加载由组件自己的配置段决定（组件自定
-  enabled 或段缺失判断）
+- **形态**：`cmd/server` 包导出全家桶装配 API——`NewEngine(statusMap,
+  opts...)`（四中间件固定顺序 + 内置 /healthz；模块码表是业务唯一必传
+  差异，EngineOption 留 WithSkipPaths/WithMessageFunc 逃生舱）、
+  `Init(m) (Config, error)`（组件自治读 server 段，段缺失全默认；副作用
+  设置 gin 模式，配置优先于 GIN_MODE）、`NewServer(cfg, engine)
+  (srv, cleanup)`（cleanup 承载优雅停机，上限 ShutdownTimeout）、
+  `Run(srv)`（阻塞运行，SIGINT/SIGTERM 后返回，生命周期日志走 logx）
 - **依赖注入选 wire（编译期生成，方案 A）**：排除 uber/fx/dig（运行时反射
   + goroutine，违反零后台 goroutine 约束）。common-lib 只导出
-  `server.ProviderSet`（cmd/server/set.go，库 API 的一部分，本库自己无
-  wire.go 不跑 generate）；业务服务建仓时在自己的 cmd/<svc>/wire.go 里
-  引用一行 `server.ProviderSet`；依赖图变了才重跑 wire，忘了重跑在编译期
-  暴露。wire cleanup 机制（provider 返回 `(T, func(), error)`）承载优雅停机
-- logx 已按此形态完成（`Init(m) (Logger, func(), error)`）；存储组件的
-  Init 形态、四中间件注册方式、server 段（addr 等）**待设计拍板后落地**
+  `server.ProviderSet`（cmd/server/set.go：配置 map、logx.Init、
+  server.Init、NewServer；本库自己无 wire.go 不跑 generate）。**engine
+  归业务**：一行 `server.NewEngine(模块码表)` + 注册路由做成 provider 进
+  业务自己的 wire set，statusMap 是业务代码资产不走 wire 传参技巧。
+  业务建仓时在自己的 cmd/<svc>/wire.go 里 wire.Build(server.ProviderSet,
+  wire.Value(server.AppName("svc")), 业务 providers)；依赖图变了才重跑
+  wire，忘了重跑在编译期暴露。wire cleanup 链逆序承载优雅停机：
+  HTTP Shutdown → 关存储连接 → 关日志（security-management 已按此形态
+  迁移，样板见其 cmd/server/{wire.go,providers.go,main.go}）
+- **server 段契约**（application.yml）：`addr`（默认 :8080）、`mode`
+  （debug|release|test，默认 release；debug 会打印路由表到 stdout）、
+  `readHeaderTimeout`（默认 5s）/`readTimeout`/`writeTimeout`（30s）/
+  `idleTimeout`（120s）/`shutdownTimeout`（10s）——时长一律写字符串带
+  单位（"5s"，经 config.Bind 的时长钩子转换），0 表示禁用
+- logx 已按组件自治形态完成；**存储组件的 Init 形态待设计拍板**（oracle/
+  CH/OS 从 config map 初始化、enabled 判断方式），security-management 的
+  provideStorage 是业务侧临时形态
 
 ## 7. 未完成事项（按优先级）
 
-1. **cmd/server + wire 落地**（第 6 节）：待四中间件、server 段、存储组件
-   Init 形态设计讲完
+1. **存储组件 Init 形态设计**（第 6 节遗留）：oracle/CH/OS 从 config map
+   初始化、enabled 判断方式；security-management 的 provideStorage 是
+   业务侧临时形态，设计后收编进组件包
 2. **实战缺口补齐**（security-management 检验发现）：
    - 事务 context 约定（conn 层 NewTxContext/FromTxContext，用户↔角色
      关联场景急需）
@@ -206,11 +227,12 @@ make integration  # 集成测试：先 docker compose -f docker-compose.test.yml
    - 审计内存场景 helper、`NewPageable` 空值类型推断（差异点 #4/#5）
 3. **snowflake WIP 修复**：测试 race（nowFn 改 atomic）+ 3 条 lint + 覆盖率
    + **同毫秒序列缺陷**（同毫秒内序列恒为 0 → ID 重复；security-management
-   的 app 测试间歇失败实证，见 STATUS）
+   的 app 测试间歇失败实证——2026-10-21 复测 3 跑 2 败近乎必现，快机器
+   上两创建稳定同毫秒，见 STATUS）
 4. **repository 测试**：baseOf 校验可单测；Create/Update 落库用 sqlmock 或
    进集成线
 5. **txId 缺失行为拍板**：业务方定规则后改 `runtimecontext.go` 一处
-6. **集成线补跑**：本轮 config/logx/bizerror/rctx/paging 大改后 Oracle/CH/OS
+6. **集成线补跑**：本轮 API 分包/参数转换/cmd/server 大改后 Oracle/CH/OS
    真环境链路建议跑 `make integration`
 7. **打 tag v0.6.0 锁基线**：Unreleased 已积累多轮 breaking，首个新业务
    接入前建议打 tag 并全量验证

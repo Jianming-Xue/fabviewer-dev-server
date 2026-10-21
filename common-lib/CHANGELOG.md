@@ -6,6 +6,40 @@
 
 ## [Unreleased]
 
+### Added（cmd/server 统一装配包，2026-10-21 拍板方案 A 落地）
+
+- 新增 `cmd/server`（业务组装根的全家桶入口，import 别名 server）：
+  - `NewEngine(statusMap, opts...)`：按固定顺序挂四中间件 + 内置 /healthz
+    探活；模块错误码表是业务唯一必传差异；`EngineOption` 留
+    WithSkipPaths/WithMessageFunc 逃生舱
+  - `Init(m) (Config, error)`：组件自治读 server 段（段缺失全默认：
+    addr ":8080"、mode release、readHeaderTimeout 5s、read/write 30s、
+    idle 120s、shutdownTimeout 10s）；副作用设置 gin 模式（配置优先于
+    GIN_MODE）；时长写 "5s" 式字符串
+  - `NewServer(cfg, engine) (srv, cleanup)`：cleanup 承载优雅停机（等待
+    在途请求，上限 ShutdownTimeout）；`Run(srv)`：阻塞运行，SIGINT/
+    SIGTERM 后返回，生命周期日志走 logx 全局出口
+  - `ProviderSet`（wire 编译期装配：配置 map、logx.Init、server.Init、
+    NewServer；engine 归业务一行 NewEngine provider）；新增依赖
+    google/wire
+- `common/config` 新增 `Bind(m, out)`：绑定到已存在目标（保留已有值、
+  出现的键覆盖——缺省即默认值的组件自治底座）；GetSection 与 Bind 均挂
+  字符串时长钩子（"5s" → time.Duration）
+- security-management 已迁移 wire 形态（wire.go/providers.go/瘦身 main，
+  cleanup 链逆序：HTTP 停机 → 关存储 → 关日志）；application.yml 增
+  server 段；usererrors.StatusMap() 码表单一来源；apifull 改为无 wire 的
+  手工全家桶示例
+
+### Changed（Breaking：中间件零持有日志）
+
+- `accesslog.AccessLog` / `errorhandler.ErrorHandler` / `recovery.Recovery`
+  去掉首参 logx.Logger，内部直接经 logx 全局出口记录（与拍板的日志哲学
+  一致；消除「构造期捕获 Default() 早于 logx.Init 永远 Nop」的时序隐患；
+  测试经 logx.SetLogger 注入，testutil 新增 CaptureLog 助手）
+- 迁移对照：`AccessLog(log)` → `AccessLog()`、`ErrorHandler(log, opts...)`
+  → `ErrorHandler(opts...)`、`Recovery(log)` → `Recovery()`；业务组装
+  建议直接改用 `server.NewEngine`
+
 ### Added（common/units 输入转换原语 + api/request 参数转换）
 
 - 新增 `common/units`（跨层零依赖）：`Bool`（布尔 wire 约定：int 输入

@@ -30,6 +30,7 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 | `common/i18n`（多语言表能力，仅依赖标准库与 `common/rctx`） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/units`（输入转换原语：int 布尔、日期/毫秒时间戳解析，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `api/reqctx`（运行时上下文 gin 侧绑定）、`api/request`（请求参数解析）、`api/response`（统一响应体写回）、`api/errresp`（错误响应与状态码映射）、`api/middleware/*`（accesslog / errorhandler / recovery / runtimecontext 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
+| `cmd/server`（组装全家桶：NewEngine 引擎装配 / Init 读 server 段 / NewServer+Run 优雅停机 / wire ProviderSet） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/clickhouse`（`config`/`batch` 子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
 
 约定：
@@ -143,16 +144,11 @@ replace github.com/fab-viewer/common-lib => ../../services/common-lib
 
 ### RESTful API 业务（接口访问层 + 存储层）
 
+引擎装配（四中间件固定顺序 + /healthz 探活）与 http.Server/优雅停机归
+`cmd/server`，业务只传模块错误码表并注册路由：
+
 ```go
-r := gin.New()
-// 注册顺序固定：AccessLog → ErrorHandler → Recovery → RuntimeContext
-//（AccessLog 必须在 ErrorHandler 外层，否则错误路径记录的 status 不正确）
-r.Use(
-    accesslog.AccessLog(log),
-    errorhandler.ErrorHandler(log),
-    recovery.Recovery(log),
-    runtimecontext.FillRuntimeContext(),
-)
+r := server.NewEngine(usererrors.StatusMap()) // 模块码表是业务唯一必传差异
 
 r.GET("/api/users", func(c *gin.Context) {
     q := request.PageQuery(c) // 解析 ?pageIndex=&pageSize=，非法值回退默认
@@ -163,7 +159,17 @@ r.GET("/api/users", func(c *gin.Context) {
     }
     response.OKPage(c, res)
 })
+
+cfg, err := server.Init(cfgMap)   // 读 server 段（段缺失全默认），设置 gin 模式
+srv, cleanup := server.NewServer(cfg, r)
+err = server.Run(srv)             // 阻塞运行，SIGINT/SIGTERM 后返回；cleanup 优雅停机
 ```
+
+手工挂中间件（不经 NewEngine）时注册顺序固定 `accesslog.AccessLog() →
+errorhandler.ErrorHandler(opts...) → recovery.Recovery() →
+runtimecontext.FillRuntimeContext()`（AccessLog 必须在 ErrorHandler 外层，
+否则错误路径记录的 status 不正确；中间件零持有日志对象，经 logx 全局出口记录）。
+wire 装配见 `cmd/server` 包文档与 security-management 的 cmd/server。
 
 ### 定时器业务（无接口访问层，只 import 存储包 + 跨层包）
 
@@ -397,7 +403,7 @@ _ = c.Error(usererrors.NewConfirmDeleteUser(ctx).InsertArgs(u.Name))
 // → zh："确认删除用户 zhangsan 吗？"  en："confirm deleting user zhangsan?"
 
 // 4. 出口（ErrorHandler）直出 Message；模块码经 WithStatusMap 映射状态码
-r.Use(errorhandler.ErrorHandler(log,
+r.Use(errorhandler.ErrorHandler(
     errorhandler.WithStatusMap(map[bizerror.Code]int{
         usererrors.CodeUserNotFound: http.StatusNotFound,
     }), ...)

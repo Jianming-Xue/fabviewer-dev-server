@@ -1,6 +1,7 @@
-// Command apifull 演示 common-lib API 组件的完整用法：四个中间件的推荐注册
-// 顺序、请求运行时上下文、统一响应体、分页参数解析、错误消息国际化与
-// 优雅停机。
+// Command apifull 演示 common-lib API 组件的完整用法（无 wire 的手工
+// 全家桶形态）：server.NewEngine 引擎装配（四中间件固定顺序 + /healthz）、
+// 请求运行时上下文、统一响应体、分页参数解析、错误消息国际化与优雅停机。
+// 业务服务的 wire 形态见 security-management 的 cmd/server。
 //
 // 启动：
 //
@@ -22,23 +23,16 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
-	"os/signal"
 	"strconv"
-	"syscall"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/fab-viewer/common-lib/api/middleware/accesslog"
-	"github.com/fab-viewer/common-lib/api/middleware/errorhandler"
-	"github.com/fab-viewer/common-lib/api/middleware/recovery"
-	"github.com/fab-viewer/common-lib/api/middleware/runtimecontext"
 	"github.com/fab-viewer/common-lib/api/request"
 	"github.com/fab-viewer/common-lib/api/response"
+	server "github.com/fab-viewer/common-lib/cmd/server"
 	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/logx"
 	"github.com/fab-viewer/common-lib/common/paging"
@@ -103,29 +97,26 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	defer closeLog() // 停机时 Sync 并关闭文件（Init 已落位全局出口）
+	// 正常停机路径在 main 末尾显式 closeLog（os.Exit 分支不执行 defer）
 
 	repo := &userRepo{data: seedUsers(57)}
 
-	r := gin.New()
-	// 注册顺序固定：AccessLog → ErrorHandler → Recovery → RuntimeContext
-	// AccessLog 最外层，保证错误路径记录的 status 是最终值
-	r.Use(
-		accesslog.AccessLog(log),
-		errorhandler.ErrorHandler(log,
-			// 模块自定义码需映射状态码（未映射按 500）
-			errorhandler.WithStatusMap(map[bizerror.Code]int{
-				usererrors.CodeInvalidUserID:     http.StatusBadRequest,
-				usererrors.CodeUserNotFound:      http.StatusNotFound,
-				usererrors.CodeConfirmDeleteUser: http.StatusConflict,
-				ordererrors.CodeOrderNotFound:    http.StatusNotFound,
-			}),
-		),
-		recovery.Recovery(log),
-		runtimecontext.FillRuntimeContext(),
-	)
+	// server 段缺失全默认：":8080"、release 模式、超时默认（真实业务服务
+	// 经 config.LoadConfig 读 application.yml 后传 map 进来）
+	cfg, err := server.Init(nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
-	r.GET("/healthz", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
+	// 引擎装配归 server.NewEngine：四中间件固定顺序 + /healthz 探活；
+	// 模块错误码表是业务唯一必传差异（未映射的自定义码按 500）
+	r := server.NewEngine(map[bizerror.Code]int{
+		usererrors.CodeInvalidUserID:     http.StatusBadRequest,
+		usererrors.CodeUserNotFound:      http.StatusNotFound,
+		usererrors.CodeConfirmDeleteUser: http.StatusConflict,
+		ordererrors.CodeOrderNotFound:    http.StatusNotFound,
+	})
 
 	apiGroup := r.Group("/api")
 	apiGroup.GET("/users", func(c *gin.Context) {
@@ -160,32 +151,14 @@ func main() {
 
 	apiGroup.GET("/boom", func(_ *gin.Context) { panic("demo panic") })
 
-	srv := &http.Server{
-		Addr:              ":8080",
-		Handler:           r,
-		ReadHeaderTimeout: 5 * time.Second,
+	// NewServer 组装 http.Server（cleanup 承载优雅停机）；Run 阻塞运行、
+	// 等信号后返回。真实项目用 wire 时 cleanup 链自动串起 HTTP 停机与
+	// 各存储客户端 Close（见 security-management 的 cmd/server）。
+	srv, cleanup := server.NewServer(cfg, r)
+	if err := server.Run(srv); err != nil {
+		os.Exit(1) // Run 已记录 server exited 日志
 	}
-
-	// 优雅停机：SIGINT/SIGTERM 后先 Shutdown HTTP，再按序 Close 各存储客户端
-	// （本示例无存储；真实项目此处依次调用 oracle.DB.Close、clickhouse.Client.Close 等）。
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	go func() {
-		log.Info("listening", "addr", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Error("server exited", "err", err)
-			os.Exit(1)
-		}
-	}()
-
-	<-ctx.Done()
-	log.Info("shutting down")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Error("graceful shutdown failed", "err", err)
-	}
+	cleanup() // 等待在途请求结束（上限 cfg.ShutdownTimeout）
 	log.Info("bye")
 	closeLog()
 }

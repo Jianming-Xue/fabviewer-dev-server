@@ -25,7 +25,8 @@ services/
 
 | 约定 | 内容 |
 |---|---|
-| 服务配置 | 每服务自维护 `application.yml`（路径可经 `{appName}_CFG` 覆盖）；加载/读取/校验用 `common/config`（LoadConfig/GetSection[T]/Get/ValidateIs*）；叶子环境变量覆盖：`security.log.level` 式点分全路径 |
+| 服务配置 | 每服务自维护 `application.yml`（路径可经 `{appName}_CFG` 覆盖）；加载/读取/校验用 `common/config`（LoadConfig/GetSection[T]/Bind/Get/ValidateIs*）；叶子环境变量覆盖：`security.log.level` 式点分全路径 |
+| HTTP 装配 | 引擎/四中间件/healthz/优雅停机归 `common-lib/cmd/server`（NewEngine 传模块码表 + Init 读 server 段 + NewServer/Run）；业务经 wire `server.ProviderSet` 装配，main 只剩 InitializeServer → Run；server 段默认 :8080/release，超时写 "5s" 式字符串 |
 | 日志 | `logx.Init(cfgMap)` 唯一初始化（cmd/server 统一装配调用）；业务一律包级函数 `logx.Info/Warn/Error/Debug` 零持有；双出口 console/file（lumberjack 滚动）、等级链 outlet→global→info 静默兜底、format json 默认/console；caller 指向业务行；测试经 SetLogger 注入 |
 | 统一错误 | `bizerror.BizError` 四字段（原 fverr/FvError 更名）；唯一构造 `NewError(code,msg,args...)` + 链式 `InsertArgs`/`AttachError`；判断 `IsError/From`；出口只出 Message 其余进日志；**错误编码不出响应体** |
 | 错误多语言 | 每模块自己的 `messages_<语言>.go`（key 即 code，`{0}` 位置占位符）；`go generate`（i18nerr）产出构造函数；模块字典跟包走、无全局注册 |
@@ -45,9 +46,10 @@ services/
   - `actortx` 并入 `rctx`（字段私有化 With/From）
   - 分页 Query → PageRequest、默认 10/上限 100、新增 totalPage
   - **Unreleased 已积累大量 breaking，接入业务前建议打 tag v0.6.0**
-- **cmd/server 统一装配已拍板未落地**（wire 编译期方案 A；全家桶 + 组件
-  自治 Init；详见 common-lib/HANDOVER 第 6 节；四中间件注册方式、server
-  段、存储组件 Init 形态待设计）
+- **cmd/server 统一装配已落地**（中间件零持有日志 + server.NewEngine/
+  Init/NewServer/Run + wire ProviderSet；security-management 已迁移 wire
+  形态——main 只剩 InitializeServer → Run；详见 common-lib/HANDOVER 第
+  6 节；存储组件 Init 形态仍待设计）
 - **security-management**：用户模块纵切片完成并已随 common-lib 改造迁移
   （application.yml + LoadConfig/Init，端到端实测通过）；角色与登录策略未开始
 - 已知遗留（不阻塞）：snowflake WIP（race + 3 条 lint + 覆盖率 + 同毫秒
@@ -56,8 +58,8 @@ services/
 
 ## 4. 下一步（按优先级）
 
-1. **cmd/server + wire 落地**：收齐四中间件注册方式、server 段（addr 等）、
-   各存储组件 Init 形态的设计后开工
+1. **存储组件 Init 形态设计**（cmd/server 装配的遗留项）：oracle/CH/OS
+   从 config map 初始化、enabled 判断方式
 2. **角色模块 + 用户↔角色关联（事务场景）**——驱动解决 common-lib 差异
    点 #1（事务 context 约定，详见 security-management/README 的差异点）
 3. common-lib 补齐实战暴露的缺口：通用仓储查询（Get/List/Delete/Count）、

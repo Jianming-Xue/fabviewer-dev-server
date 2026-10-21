@@ -14,18 +14,15 @@ import (
 
 // Recovery 兜住 panic：记录含事务 ID 的错误日志与堆栈，写回 500 统一响应体，
 // 防止进程崩溃。响应已写过（panic 前已部分输出）则不再追加写。
-// log 为 nil 时使用 logx.Default()。
-func Recovery(log logx.Logger) gin.HandlerFunc {
-	if log == nil {
-		log = logx.Default()
-	}
+// 日志经全局出口 logx 记录（测试经 logx.SetLogger 注入），组件零持有日志对象。
+func Recovery() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			r := recover()
 			if r == nil {
 				return
 			}
-			log.Error("panic recovered",
+			logx.Error("panic recovered",
 				"error", fmt.Sprintf("%v", r),
 				"stack", string(debug.Stack()),
 				"method", c.Request.Method,

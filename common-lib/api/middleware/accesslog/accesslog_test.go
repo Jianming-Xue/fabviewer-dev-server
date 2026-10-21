@@ -10,13 +10,12 @@ import (
 
 	"github.com/fab-viewer/common-lib/api/internal/testutil"
 	"github.com/fab-viewer/common-lib/api/middleware/accesslog"
-	"github.com/fab-viewer/common-lib/common/logx"
 )
 
 func TestAccessLogRecords(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(accesslog.AccessLog(log))
+	r.Use(accesslog.AccessLog())
 	r.GET("/data", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
 	w := testutil.DoGet(r, "/data")
@@ -41,9 +40,9 @@ func TestAccessLogRecords(t *testing.T) {
 }
 
 func TestAccessLogSkipsHealthz(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(accesslog.AccessLog(log))
+	r.Use(accesslog.AccessLog())
 	r.GET("/healthz", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/livez", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/readyz", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
@@ -60,9 +59,9 @@ func TestAccessLogSkipsHealthz(t *testing.T) {
 }
 
 func TestAccessLogWithSkipPaths(t *testing.T) {
-	log := &testutil.CaptureLogger{}
+	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(accesslog.AccessLog(log, accesslog.WithSkipPaths("/ping", "/internal/metrics")))
+	r.Use(accesslog.AccessLog(accesslog.WithSkipPaths("/ping", "/internal/metrics")))
 	r.GET("/ping", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/internal/metrics", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/users", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
@@ -74,17 +73,4 @@ func TestAccessLogWithSkipPaths(t *testing.T) {
 	records := log.Snapshot()
 	require.Len(t, records, 1)
 	assert.Equal(t, "/users", testutil.MustKVString(t, records[0].KV, "path"))
-}
-
-func TestAccessLogNilLoggerUsesDefault(t *testing.T) {
-	capture := &testutil.CaptureLogger{}
-	logx.SetLogger(capture)
-	t.Cleanup(func() { logx.SetLogger(logx.Nop()) })
-
-	r := testutil.NewTestEngine()
-	r.Use(accesslog.AccessLog(nil)) // nil → logx.Default()
-	r.GET("/x", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
-
-	testutil.DoGet(r, "/x")
-	assert.Len(t, capture.Snapshot(), 1, "nil logger 应回退到 logx.Default()")
 }

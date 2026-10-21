@@ -2,6 +2,12 @@
 # 环境变量覆盖：security.<段>.<键>=<值>（如 security.log.file.maxSize=200）
 # 配置文件路径覆盖：环境变量 security_CFG=<路径>（缺省为本文件）
 
+server:
+  addr: ":8081"            # 环境变量覆盖：security.server.addr
+  # mode: release          # debug|release|test（缺省 release；debug 会打印路由表）
+  # readHeaderTimeout: 5s  # 各时长写字符串带单位，0 表示禁用
+  # shutdownTimeout: 10s   # 优雅停机等待在途请求的上限
+
 log:
   level: info
   console:
