@@ -6,6 +6,22 @@
 
 ## [Unreleased]
 
+### Added（common/units 输入转换原语 + api/request 参数转换）
+
+- 新增 `common/units`（跨层零依赖）：`Bool`（布尔 wire 约定：int 输入
+  **1 → true，其余含 0 → false**，零值即默认 false）、`ParseDate` /
+  `ParseDateTime`（`yyyyMMdd` / `yyyyMMddHHmmss` 字符串 → **本地时间**，
+  布局常量 `LayoutDate/LayoutDateTime` 导出）、`ParseEpochMillis`
+  （13 位毫秒时间戳字符串 → 本地时间）
+- `api/request` 新增：`Wrap[VO](src)`——api 层 DTO → service 层 VO，
+  字段名忽略大小写对齐自动拷贝 + WeaklyTypedInput 弱类型转换（int → bool
+  经 DecodeHook 按 units.Bool 约定，非 1 一律 false；需要组装裁剪的场景
+  业务手写转换）；`Require(name, v)`——必填字符串校验，去首尾空白，
+  空则返回 VALIDATION 错误（errMsg 携带参数名）
+- `api/middleware/runtimecontext` 的 txTime 解析改用 `units.ParseDateTime`：
+  **时区行为变化**——原按 UTC 解析，现按服务器本地时区解析（wall-clock
+  字符串语义更正确）
+
 ### Changed（Breaking：API 层按功能分包）
 
 - `api` 根包删除，按功能拆为四包：`api/reqctx`（gin ↔ rctx 绑定：五请求头

@@ -40,7 +40,7 @@ func TestRuntimeContextFullHeaders(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, rctx.RuntimeContext{}.
 		WithID("tx-42").
-		WithTime(time.Date(2026, 10, 19, 17, 30, 0, 0, time.UTC)).
+		WithTime(time.Date(2026, 10, 19, 17, 30, 0, 0, time.Local)).
 		WithName("queryUsers").
 		WithUser("zhangsan").
 		WithLang("zh-CN"), got, "五字段完整解析进 tx 上下文")

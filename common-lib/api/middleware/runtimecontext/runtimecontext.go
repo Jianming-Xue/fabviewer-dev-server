@@ -11,6 +11,7 @@ import (
 	"github.com/fab-viewer/common-lib/api/reqctx"
 	"github.com/fab-viewer/common-lib/common/i18n"
 	"github.com/fab-viewer/common-lib/common/rctx"
+	"github.com/fab-viewer/common-lib/common/units"
 )
 
 // FillRuntimeContext 构建请求运行时上下文的中间件工厂：解析请求头
@@ -64,15 +65,13 @@ func newTxID() string {
 	return hex.EncodeToString(b)
 }
 
-// txTimeLayout 是 txTime 请求头的约定格式（yyyyMMDDHHmmss）。
-const txTimeLayout = "20060102150405"
-
-// parseTxTime 解析 txTime：空串或格式非法时兜底为服务器当前时间。
+// parseTxTime 解析 txTime（yyyyMMddHHmmss，经 units.ParseDateTime 归一）：
+// 空串或格式非法时兜底为服务器当前时间。
 func parseTxTime(v string) time.Time {
 	if v == "" {
 		return time.Now()
 	}
-	t, err := time.Parse(txTimeLayout, v)
+	t, err := units.ParseDateTime(v)
 	if err != nil {
 		return time.Now()
 	}

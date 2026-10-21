@@ -6,10 +6,10 @@
 
 ## 一句话状态
 
-common-lib 五项核心能力改造已完成并推送，其上完成 API 层按功能分包
-（reqctx/request/response/errresp + 四中间件子包，纯结构重构零行为变化）；
-cmd/server 统一装配（wire 方案 A）已拍板，API 层三个设计点（中间件日志
-形态/注册方式/server 段）讨论中；snowflake 仍是 WIP。
+common-lib 五项核心能力改造与 API 层按功能分包已完成并推送；请求参数
+转换已落地（common/units 原语 + request.Wrap/Require，布尔 1=true、
+日期 8/14 位字符串、13 位毫秒时间戳）；cmd/server 统一装配（wire 方案 A）
+已拍板，中间件日志形态/注册方式/server 段讨论中；snowflake 仍是 WIP。
 
 ## 已完成（2026-10-21 会话，已提交推送）
 
@@ -19,6 +19,7 @@ cmd/server 统一装配（wire 方案 A）已拍板，API 层三个设计点（�
 | 7. logx 重构 | Init(m) 唯一入口（配置结构私有、等级链 outlet→global→info 静默兜底、format json 默认/console）、console/file 双出口、滚动换 lumberjack（maxAge/compress/localTime）、包级 Debug/Info/Warn/Error（独立 log.go，caller 指向业务行）、SetLogger（原 SetDefault）、ErrNoLogComponent；**删除**：远程出口（Sink/异步缓冲/logsink 包）、自定义格式（LineEncoder/Formatter/Rec）、自研编号滚动（推翻 2026-10-20 拍板）、NewSlog（slog 适配） | 覆盖率 100% + lint 0 + security-management 真机实测（双格式日志、caller 指向 main.go 业务行） |
 | 8. 统一错误更名 | fverr → bizerror（FvError → BizError，仅更名）；i18nerr 生成器随迁，examples 双模块 + security-management 的 errors_gen 重生成零漂移 | 全库 build/vet/test |
 | 9. actortx 并入 rctx | actortx 包删除（操作者即 RuntimeContext.User，双通道合一）；RuntimeContext 字段私有化（WithXxx 链式赋值值语义 / FromXxx 取值）；审计钩子/accesslog/语法糖全量随迁 | 全库 race 测试 |
+| 12. 请求参数转换 | 新增 common/units（Bool：int 1→true 其余 false；ParseDate/ParseDateTime：8/14 位日期字符串→本地时间；ParseEpochMillis：13 位毫秒）；api/request 增 Wrap[VO]（DTO→VO 字段名对齐+弱类型，int→bool 按 units.Bool 钩子）与 Require（必填去空白→VALIDATION）；runtimecontext txTime 解析改用 units（时区 UTC→本地）；depguard 白名单/测试豁免随迁 | units 100%、api 聚合 99.1%、lint 0（除 snowflake WIP）、race 全绿 |
 | 11. API 层按功能分包 | `api` 根包拆为 reqctx（gin↔rctx 绑定+WithActor）/ request（PageQuery）/ response（apiresponse 写回）/ errresp（Fail+码表）；`api/middleware` 按处理流程点拆 accesslog/errorhandler/recovery/runtimecontext 四子包（根包留注册顺序契约+全栈测试）；新增 api/internal/testutil 共享测试脚手架；accesslog.AccessLogOption→Option；examples/apifull 与 security-management 随迁 | build/vet/test(race) 全绿 + lint 除 snowflake 3 条 WIP 外零告警 + apifull 端到端冒烟（分页/404/txId）|
 | 10. 分页契约 | Query→PageRequest、默认 pageSize 20→**10**、MaxSize 500→**MaxPageSize=100**、Pageable 增加 **totalPage**（totalSize/pageSize 向上取整，整除不加）、出参字段顺序 pageIndex/pageSize/totalSize/totalPage/data | 契约测试更新 + 真机 wire 实测 |
 | 业务随迁 | security-management：新增 application.yml，cmd/server 经 config.LoadConfig("security")+logx.Init 装配；oracleproc/apifull 示例随迁 | memory 模式端到端实测（创建/分页/双格式日志/caller） |

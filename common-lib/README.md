@@ -28,6 +28,7 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 | `common/config`（配置加载：application.yml + 环境变量覆盖 + 段绑定） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/logx`（日志完整工具：Init + 包级函数，见下节） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/i18n`（多语言表能力，仅依赖标准库与 `common/rctx`） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `common/units`（输入转换原语：int 布尔、日期/毫秒时间戳解析，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `api/reqctx`（运行时上下文 gin 侧绑定）、`api/request`（请求参数解析）、`api/response`（统一响应体写回）、`api/errresp`（错误响应与状态码映射）、`api/middleware/*`（accesslog / errorhandler / recovery / runtimecontext 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/clickhouse`（`config`/`batch` 子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
 
@@ -265,6 +266,20 @@ check-layers:
   totalSize=0 为 0）。
 - 字符串业务错误码（`bizerror.Code`）与明细（`Details`）不出参：错误码只用于内部映射
   与日志，明细随 `business error` 日志留痕（`ErrorHandler`）。
+
+### 请求输入转换约定（common/units + api/request）
+
+| 输入 | wire 约定 | 转换 |
+|---|---|---|
+| 布尔 | int：**1 → true，其余（含 0）→ false**，int 零值即默认 false | `units.Bool(i)` |
+| 日期 | 字符串 `20261021`（yyyyMMdd） | `units.ParseDate(s)` → 当日零点本地时间 |
+| 日期时间 | 字符串 `20261021100000`（yyyyMMddHHmmss，与 txTime 头同族） | `units.ParseDateTime(s)` → 本地时间 |
+| 毫秒时间戳 | 13 位数字串 `1761012000000` | `units.ParseEpochMillis(s)` → 本地时间 |
+
+- **DTO → service VO**：`request.Wrap[VO](dto)`——字段名忽略大小写对齐自动拷贝
+  + 弱类型转换（int → bool 按 units.Bool 约定）；需要组装/裁剪的转换业务手写
+- **必填字符串校验**：`name, err := request.Require("username", c.Query("username"))`
+  ——去首尾空白，空则 VALIDATION 错误（errMsg 携带参数名，走 ErrorHandler 出 400）
 
 ### 请求运行时上下文（common/rctx.RuntimeContext）
 

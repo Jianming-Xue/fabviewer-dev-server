@@ -59,6 +59,7 @@ linters:
             - "**/common/bizerror/**"
             - "**/common/paging/**"
             - "**/common/rctx/**"
+            - "**/common/units/**"
           allow:
             - "$gostd"
             - "github.com/stretchr/testify"
@@ -142,7 +143,7 @@ linters:
           - errcheck
       # 外部测试包（xxx_test）需要 import 被测包自身，depguard strict
       # 白名单无法表达自引用，测试文件豁免。
-      - path: common/(i18n|logx)/.+_test\.go
+      - path: common/(i18n|logx|units)/.+_test\.go
         linters:
           - depguard
       - path: examples/

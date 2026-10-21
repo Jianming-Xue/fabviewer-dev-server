@@ -57,9 +57,13 @@ common/rctx       RuntimeContext（五字段私有，WithXxx 链式赋值/FromXx
                   User 即审计操作者——原 actortx 包已并入删除）
 common/i18n       Bundles 模块多语言表 + Accept-Language 解析（只提供能力，
                   译文业务每模块自维护；仅依赖 rctx）
+common/units      输入转换原语：Bool（int：1→true 其余含 0→false）、
+                  ParseDate/ParseDateTime（yyyyMMdd / yyyyMMddHHmmss → 本地
+                  时间）、ParseEpochMillis（13 位毫秒时间戳）；零三方依赖
 api/reqctx        gin ↔ rctx 绑定：五请求头常量、CtxRuntimeContext key、
                   RuntimeContextOf/TxIDOf/LangOf 取值语法糖、WithActor
-api/request       请求参数对象解析：PageQuery（pageIndex/pageSize → PageRequest）
+api/request       请求参数：PageQuery、Require（必填校验）、Wrap[VO]
+                  （DTO→service VO：字段名对齐 + 弱类型转换，布尔按 units.Bool）
 api/response      统一响应体 apiresponse：Response 五字段恒序列化 +
                   OK/Created/NoContent/OKPage/Write 写回
 api/errresp       错误响应：Fail、DefaultStatusMap/StatusFor（Code → HTTP 状态码）
