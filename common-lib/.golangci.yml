@@ -125,16 +125,6 @@ linters:
           files:
             - "**/storage/oracle/**"
           deny:
-            - pkg: "github.com/fab-viewer/common-lib/storage/clickhouse"
-              desc: "存储子包互相隔离"
-            - pkg: "github.com/fab-viewer/common-lib/storage/opensearch"
-              desc: "存储子包互相隔离"
-        clickhouse-isolated:
-          files:
-            - "**/storage/clickhouse/**"
-          deny:
-            - pkg: "github.com/fab-viewer/common-lib/storage/oracle"
-              desc: "存储子包互相隔离"
             - pkg: "github.com/fab-viewer/common-lib/storage/opensearch"
               desc: "存储子包互相隔离"
         opensearch-isolated:
@@ -142,8 +132,6 @@ linters:
             - "**/storage/opensearch/**"
           deny:
             - pkg: "github.com/fab-viewer/common-lib/storage/oracle"
-              desc: "存储子包互相隔离"
-            - pkg: "github.com/fab-viewer/common-lib/storage/clickhouse"
               desc: "存储子包互相隔离"
   exclusions:
     rules:

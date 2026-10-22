@@ -1,6 +1,6 @@
 # common-lib
 
-fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / ClickHouse / OpenSearch）
+fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / OpenSearch）
 与 **API 公共组件**（统一响应、分页、错误处理、日志中间件），被两类业务系统 import：
 
 - **RESTful API 业务**（Gin）
@@ -15,7 +15,7 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 |---|---|
 | Go 工具链 | **≥ 1.26**（受 opensearch-go/v4 最低版本约束） |
 | Oracle 访问 | 仅当 import `storage/oracle` 时：编译期 CGO + C 编译器；运行期 Oracle Instant Client |
-| 其他存储 | 无额外系统依赖（clickhouse-go 原生协议 / opensearch HTTP） |
+| OpenSearch | 无额外系统依赖（opensearch HTTP） |
 
 ## 包 ↔ 业务分层映射矩阵（核心）
 
@@ -31,7 +31,7 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 | `common/units`（输入转换原语：int 布尔、日期/毫秒时间戳解析，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `api/request`（请求参数解析/校验/时间解析/DTO 包装）、`api/response`（统一响应体 ApiResponse 与 VO→DTO 转换）、`api/handlers`（公共 handler：readyz 就绪探活）、`api/middleware/*`（observer / fault / guard / enrich 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `cmd/server`（组装全家桶：NewEngine 引擎装配 / Init 读 server 段 / NewServer+Run 优雅停机 / wire ProviderSet） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
-| `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/clickhouse`（`config`/`batch` 子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
+| `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
 
 约定：
 
@@ -68,8 +68,8 @@ storage 层      对外签名只见 VO：
 | 对象 | 定义位置 | tag | 规则 |
 |---|---|---|---|
 | **DTO** | 对象层共享包 | 仅 json | 对外 HTTP 契约，只在 api 层进出；定时任务没有 DTO |
-| **VO** | 对象层共享包 | 仅 json | 业务对象，storage 对上的唯一边界类型；**禁止携带任何存储 tag**（唯一权衡例外见下文 ClickHouse） |
-| **PO** | **存储包内部、类型名未导出** | gorm / ch | 编译器保证 PO 出现在导出签名即编译失败——隐藏存储细节由语言强制，不靠约定 |
+| **VO** | 对象层共享包 | 仅 json | 业务对象，storage 对上的唯一边界类型；**禁止携带任何存储 tag** |
+| **PO** | **存储包内部、类型名未导出** | gorm | 编译器保证 PO 出现在导出签名即编译失败——隐藏存储细节由语言强制，不靠约定 |
 
 写路径示例（PO 未导出，锁死在存储包内；配合库内置 upperNamer，PO 连 column tag 都可省）：
 
@@ -100,17 +100,11 @@ db.GORM().WithContext(ctx).Raw("SELECT id, name FROM users WHERE id = :1", id).S
 
 // OpenSearch 直出 VO：_source 走 encoding/json，VO 已有的 json tag 直接复用
 res, err := opensearch.Search[model.User](ctx, cli, "users", q)
-
-// ClickHouse：QuerySlice 按 ch tag 反射填充
 ```
-
-**ClickHouse 的 ch tag 权衡（唯一需要各业务系统自己拍板的点）**：`QuerySlice[T]` 按
-`ch:"..."` tag 映射。tag 写在 VO 上最省代码但会把 VO 与 CH 耦合；**推荐**在存储包内
-定义带 ch tag 的私有行结构，扫出后三行代码转 VO，保持 VO 纯净。
 
 **禁止事项**（评审必查）：
 
-1. PO（或任何 gorm/ch tag 结构）出现在导出签名、返回值、对象层共享包
+1. PO（或任何 gorm tag 结构）出现在导出签名、返回值、对象层共享包
 2. VO 携带 gorm tag；DTO 出现在 storage 层
 3. `*gorm.DB`、`driver.Rows`、`*opensearch.Client` 等 SDK 类型越出存储层
 
@@ -124,9 +118,9 @@ res, err := opensearch.Search[model.User](ctx, cli, "users", q)
 | 对象流转 | 简化为 **VO ↔ PO**（DTO→VO 一步消失，任务参数直接是业务参数） |
 | 错误处理 | 没有 fault 中间件兜底——任务循环内自行处理：`logx.Error` 记录（bizerror 包装自带操作上下文），并按 `bizerror.Code` 决定重试/跳过/告警（如 CodeDB 重试、CodeValidation 告警并跳过） |
 | 日志 | 装配时 `logx.Init(cfgMap)`；每个任务用 `logx.Default().With("job", "xxx_settle")` 派生，日志自动带任务标识 |
-| 分页 | 批处理通常不翻页；ClickHouse `Batch[T]` 是定时任务主力写入器 |
+| 分页 | 批处理通常不翻页 |
 | 事务 | 结算/对账类任务用 `GORM().Transaction` + `conn.CallProcTx`（conn.FromGorm 取事务连接），已有完整约定 |
-| 优雅退出 | 信号 → 停止调度（不取新任务）→ 等待在跑任务完成（带超时）→ 依次 Close 各存储客户端——顺序错误会丢未发送的 Batch 数据 |
+| 优雅退出 | 信号 → 停止调度（不取新任务）→ 等待在跑任务完成（带超时）→ 依次 Close 各存储客户端 |
 | depguard | 删除业务模板中 ifaces 相关规则（目录不存在自然不生效），其余规则不变 |
 | 调度器 | 不在 common-lib 范围（本库不绑 cron 选型）；若未来多个定时系统需要任务锁/错过补偿等公共能力，再评估入库 |
 
@@ -462,13 +456,12 @@ tip = i18n.InsertArgs(usercodes.NewMessage(ctx, usercodes.OrderSubmitted), order
 
 ## 各存储包部署前提与用法
 
-详见各包 godoc（`storage/oracle`、`storage/clickhouse`、`storage/opensearch` 的
+详见各包 godoc（`storage/oracle`、`storage/opensearch` 的
 doc.go 各有完整用法示例）。要点：
 
 | 包 | 部署前提 | 关键 API |
 |---|---|---|
 | `storage/oracle`（conn/config/base/repository 四子包） | CGO + Oracle Instant Client；GORM/原生 SQL/存储过程三通道 | `conn.Open` / `db.GORM()` / `db.SQL()` / `db.CallProc` / `conn.CallProcTx` |
-| `storage/clickhouse`（config/batch 子包） | 无（原生 TCP 协议，默认 9000 端口） | `Open` / `batch.NewBatch[T]` / `QuerySlice[T]` / `client.Conn()` |
 | `storage/opensearch`（config/search 子包） | 无（HTTP，默认 9200；自签集群可开 Insecure） | `Open` / `search.Search[T]` / `client.Index` / `client.Get[T]` / `client.Delete` / `client.SDK()` |
 
 ### 事务使用约定（Oracle）
@@ -492,7 +485,6 @@ doc.go 各有完整用法示例）。要点：
 ```bash
 docker compose -f docker-compose.test.yml up -d
 export COMMON_LIB_ORACLE_DSN='commonlib/commonlib@localhost:1521/freepdb1'
-export COMMON_LIB_CH_DSN='clickhouse://commonlib:commonlib@localhost:9000/commonlib'
 export COMMON_LIB_OS_ADDRS='http://localhost:9200'
 make integration          # go test -tags=integration ./...
 ```
@@ -528,7 +520,6 @@ make fmt       # gofmt + goimports（提交前跑）
 |---|---|
 | `examples/apifull` | API 全家桶（四中间件+统一响应+分页+优雅停机），可直接 go run |
 | `examples/oracleproc` | Oracle：Open→GORM CRUD→CallProc 标量 OUT→游标→Close |
-| `examples/chbatch` | ClickHouse：Batch 流式写入→QuerySlice 读回比对 |
 | `examples/ossearch` | OpenSearch：Index→Search（分页+排序）→Get→Delete 生命周期 |
 
 示例兼作公共 API 烟雾测试（进 CI 编译）；存储类示例缺环境变量时打印用法并以 0 退出。

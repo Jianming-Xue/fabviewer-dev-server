@@ -37,8 +37,8 @@ security-management 并列，仓库级交接见上级 [HANDOVER](../HANDOVER.md)
    由组件按自己的配置段判断（enabled 开关或段缺失，组件自己定）；
    `cmd/server` 只负责依次调用（统一编排入口，与 wire 编译期装配，
    详见第 6 节）。
-6. **逃生舱模式**：包装层不遮蔽 SDK——`clickhouse.Conn()/NewFromConn/WrapDB`、
-   `opensearch.SDK()/NewFromAPI/DoSearch`、`oracle DB.GORM()/SQL()`。
+6. **逃生舱模式**：包装层不遮蔽 SDK——`opensearch.SDK()/NewFromAPI/DoSearch`、
+   `oracle DB.GORM()/SQL()`。
 
 ## 3. 包地图
 
@@ -83,17 +83,16 @@ storage/oracle/conn        Open、DB 三通道（GORM/SQL/存储过程）、Curs
 storage/oracle/config      Config/WithDefaults/Validate/BuildDSN
 storage/oracle/base        BasePO 审计基类（GORM 钩子自动填 CreatedBy 等，取 rctx.User）
 storage/oracle/repository  Repository[T]（雪花 ID + 审计落库）
-storage/clickhouse(+config/batch)   Open/Client/QuerySlice；Batch[T] 批量写
 storage/opensearch(+config/search)  Open/Client/Index/Get/Delete；Search[T]（logsink 已删）
 storage/snowflake  点分隔雪花 ID（"<Unix毫秒>.<节点>.<序列>"；WIP，见 STATUS）
 storage/pool.go    PoolConfig 连接池配置
 cmd/i18nerr        模块码包生成器（messages_<语言>.go → messages_gen.go：
                   码常量 + NewError/NewMessage 两入口）
-examples/          apifull（含 i18n 完整示例）/ oracleproc / chbatch / ossearch
+examples/          apifull（含 i18n 完整示例）/ oracleproc / ossearch
 ```
 
 依赖方向（无环）：config ← conn ← repository；base 只依赖 rctx+gorm；
-logx 依赖 config（段读取）；batch/search 依赖各自根包；所有存储子包互不
+logx 依赖 config（段读取）；search 依赖各自根包；存储子包互不
 依赖（depguard 强制）。
 
 ## 4. 核心对外契约（wire 格式）
@@ -206,7 +205,7 @@ make fmt          # 提交前跑
 make integration  # 集成测试：先 docker compose -f docker-compose.test.yml up -d
 ```
 
-集成测试环境变量：`COMMON_LIB_ORACLE_DSN` / `COMMON_LIB_CH_DSN` /
+集成测试环境变量：`COMMON_LIB_ORACLE_DSN` /
 `COMMON_LIB_OS_ADDRS`，缺失自动 skip。goose 迁移样板在
 `storage/oracle/conn/testdata/migrations/oracle/`。
 

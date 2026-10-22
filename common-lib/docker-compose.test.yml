@@ -2,7 +2,6 @@
 #
 #	docker compose -f docker-compose.test.yml up -d
 #	export COMMON_LIB_ORACLE_DSN='commonlib/commonlib@localhost:1521/freepdb1'
-#	export COMMON_LIB_CH_DSN='clickhouse://commonlib:commonlib@localhost:9000/commonlib'
 #	export COMMON_LIB_OS_ADDRS='http://localhost:9200'
 #	make integration
 #
@@ -24,19 +23,6 @@ services:
       retries: 30
       start_period: 90s
 
-  clickhouse:
-    image: clickhouse/clickhouse-server:24.8
-    environment:
-      CLICKHOUSE_USER: commonlib
-      CLICKHOUSE_PASSWORD: commonlib
-      CLICKHOUSE_DB: commonlib
-    ports:
-      - "9000:9000"
-    healthcheck:
-      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
 
   opensearch:
     image: opensearchproject/opensearch:2.19.0

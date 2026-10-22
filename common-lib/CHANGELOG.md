@@ -6,6 +6,15 @@
 
 ## [Unreleased]
 
+### Removed（Breaking：ClickHouse 存储包整体移除）
+
+- `storage/clickhouse`（含 config/batch 子包）与 `examples/chbatch` 整体
+  删除（2026-10-22 业务方拍板：暂无 CH 环境，待环境就绪后按 oracle/
+  opensearch 同款组件自治形态重新引入）；go.mod 移除 clickhouse-go 依赖
+- 随迁清理：docker-compose.test.yml 的 CH 服务与 COMMON_LIB_CH_DSN、
+  depguard clickhouse-isolated 规则、README/HANDOVER/STATUS 中 ch tag
+  权衡与批量写入说明、对象层「禁止 gorm/ch tag」表述收窄为 gorm
+
 ### Changed（Breaking：i18nerr 产物重塑为模块码包 xxxcodes，仅 NewError/NewMessage 两入口）
 
 - **Breaking**：模块码包更名 `xxxerrors` → `xxxcodes`（包名即码命名空间，

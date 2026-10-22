@@ -51,7 +51,7 @@ type user struct {
 }
 
 // userRepo 模拟业务存储层：真实项目中由服务层/聚合层调用，
-// 这里用内存数据代替 Oracle/ClickHouse/OpenSearch 访问。
+// 这里用内存数据代替 Oracle/OpenSearch 访问。
 type userRepo struct {
 	data []user
 }
