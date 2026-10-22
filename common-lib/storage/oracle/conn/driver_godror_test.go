@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm/utils/tests"
 
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 )
 
 func TestGodrorDriverName(t *testing.T) {
@@ -62,7 +63,7 @@ func TestGodrorDriverNewCursor(t *testing.T) {
 		assert.Error(t, err)
 		e, ok := bizerror.From(err)
 		assert.True(t, ok)
-		assert.Equal(t, bizerror.CodeValidation, e.Code)
+		assert.Equal(t, commoncodes.InvalidParameter, e.Code)
 	})
 
 	t.Run("行集为 nil 报校验错误", func(t *testing.T) {
@@ -78,7 +79,7 @@ func TestGodrorDriverNewCursor(t *testing.T) {
 		assert.Error(t, err)
 		e, ok := bizerror.From(err)
 		assert.True(t, ok)
-		assert.Equal(t, bizerror.CodeDB, e.Code)
+		assert.Equal(t, commoncodes.DBError, e.Code)
 		assert.Contains(t, err.Error(), "WrapRows")
 	})
 }
@@ -103,6 +104,6 @@ func TestOpenGormInitializeError(t *testing.T) {
 	assert.Error(t, err)
 	e, ok := bizerror.From(err)
 	assert.True(t, ok)
-	assert.Equal(t, bizerror.CodeDB, e.Code)
+	assert.Equal(t, commoncodes.DBError, e.Code)
 	assert.Contains(t, err.Error(), "oracle.Open")
 }

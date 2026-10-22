@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/common/paging"
 	"github.com/fab-viewer/common-lib/storage/opensearch"
 	oscfg "github.com/fab-viewer/common-lib/storage/opensearch/config"
@@ -95,7 +96,7 @@ func main() {
 		fail("Get 失败", err)
 	}
 	if !found {
-		fail("Get 失败", bizerror.NewError(bizerror.CodeNotFound, "文档未找到"))
+		fail("Get 失败", bizerror.NewError(commoncodes.NotFound, "文档未找到"))
 	}
 	fmt.Printf("Get ok: id=%s status=%s\n", got.ID, got.Status)
 

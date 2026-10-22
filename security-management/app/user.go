@@ -6,8 +6,9 @@ import (
 	"context"
 
 	"github.com/fab-viewer/common-lib/common/bizerror"
-	"github.com/fab-viewer/common-lib/common/units"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/common/paging"
+	"github.com/fab-viewer/common-lib/common/units"
 	"github.com/fab-viewer/security-management/domain"
 	"github.com/fab-viewer/security-management/services"
 	"github.com/fab-viewer/security-management/usercodes"
@@ -98,7 +99,7 @@ func (s *UserService) Delete(ctx context.Context, id string, confirmed bool) err
 
 // wrapStorage 包装存储层技术错误：保留根因只进日志，Message 带操作名。
 func wrapStorage(ctx context.Context, op string, err error) error {
-	return bizerror.NewError(bizerror.CodeDB, "user storage op={0}", op).
+	return bizerror.NewError(commoncodes.DBError, "user storage op={0}", op).
 		AttachError(err, nil)
 }
 

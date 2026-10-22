@@ -32,7 +32,7 @@ import (
 	"github.com/fab-viewer/common-lib/api/request"
 	"github.com/fab-viewer/common-lib/api/response"
 	server "github.com/fab-viewer/common-lib/cmd/server"
-	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/common/logx"
 	"github.com/fab-viewer/common-lib/common/paging"
 	"github.com/fab-viewer/common-lib/examples/apifull/ordercodes"
@@ -78,7 +78,7 @@ func (r *userRepo) get(ctx context.Context, id int64) (user, error) {
 	}
 	return user{}, usercodes.NewError(ctx, usercodes.UserNotFound).
 		InsertArgs(id).
-		AttachError(bizerror.ErrNotFound, map[string]any{"id": id})
+		AttachError(commoncodes.ErrNotFound, map[string]any{"id": id})
 }
 
 func main() {

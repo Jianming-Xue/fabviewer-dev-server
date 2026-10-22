@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 )
 
 // procDB 构造直接挂 sqlmock 连接的 DB（跳过 Open，聚焦过程调用逻辑）。
@@ -103,7 +104,7 @@ func TestCallProcCursorBinding(t *testing.T) {
 		assert.Error(t, err)
 		e, ok := bizerror.From(err)
 		assert.True(t, ok)
-		assert.Equal(t, bizerror.CodeDB, e.Code)
+		assert.Equal(t, commoncodes.DBError, e.Code)
 		assert.Contains(t, err.Error(), "P_LIST")
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
@@ -140,7 +141,7 @@ func TestCallFuncSQLAndBindings(t *testing.T) {
 		assert.Error(t, err)
 		e, ok := bizerror.From(err)
 		assert.True(t, ok)
-		assert.Equal(t, bizerror.CodeValidation, e.Code)
+		assert.Equal(t, commoncodes.InvalidParameter, e.Code)
 		assert.Error(t, db.CallFunc(context.Background(), "F", nil))
 	})
 }
@@ -163,7 +164,7 @@ func TestOutInvalidInput(t *testing.T) {
 				assert.Error(t, err)
 				e, ok := bizerror.From(err)
 				assert.True(t, ok)
-				assert.Equal(t, bizerror.CodeValidation, e.Code)
+				assert.Equal(t, commoncodes.InvalidParameter, e.Code)
 			})
 		})
 	}
@@ -180,7 +181,7 @@ func TestCallProcExecError(t *testing.T) {
 	assert.Error(t, err)
 	e, ok := bizerror.From(err)
 	assert.True(t, ok)
-	assert.Equal(t, bizerror.CodeDB, e.Code)
+	assert.Equal(t, commoncodes.DBError, e.Code)
 	assert.Contains(t, err.Error(), "P_BOOM")
 }
 
@@ -190,7 +191,7 @@ func TestCallProcRecoversPanic(t *testing.T) {
 		assert.Error(t, err)
 		e, ok := bizerror.From(err)
 		assert.True(t, ok)
-		assert.Equal(t, bizerror.CodeValidation, e.Code)
+		assert.Equal(t, commoncodes.InvalidParameter, e.Code)
 		assert.Contains(t, err.Error(), "panic")
 	})
 }
@@ -262,7 +263,7 @@ func TestFromGorm(t *testing.T) {
 		assert.Error(t, err)
 		e, ok := bizerror.From(err)
 		assert.True(t, ok)
-		assert.Equal(t, bizerror.CodeValidation, e.Code)
+		assert.Equal(t, commoncodes.InvalidParameter, e.Code)
 	})
 }
 
@@ -295,7 +296,7 @@ func TestCallFuncInvalidOutArgAndCursor(t *testing.T) {
 		assert.Error(t, err)
 		e, ok := bizerror.From(err)
 		assert.True(t, ok)
-		assert.Equal(t, bizerror.CodeValidation, e.Code)
+		assert.Equal(t, commoncodes.InvalidParameter, e.Code)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -336,7 +337,7 @@ func TestCallFuncExecError(t *testing.T) {
 	assert.Error(t, err)
 	e, ok := bizerror.From(err)
 	assert.True(t, ok)
-	assert.Equal(t, bizerror.CodeDB, e.Code)
+	assert.Equal(t, commoncodes.DBError, e.Code)
 	assert.Contains(t, err.Error(), "F_BAD")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }

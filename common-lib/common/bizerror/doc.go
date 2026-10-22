@@ -15,6 +15,8 @@
 // 业务层的多语言创建经 cmd/i18nerr 生成的模块入口（如
 // usercodes.NewError(ctx, usercodes.UserNotFound)）：内部先按请求语言从
 // 模块字典查模板，再交给 NewError，详见 cmd/i18nerr 与 examples/apifull。
+// 码的定义不在本包：库级公共码（含 sentinel）在 common/commoncodes，
+// 业务模块码在各 xxxcodes 码包。
 //
 // 本包零三方依赖。
 package bizerror

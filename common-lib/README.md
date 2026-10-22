@@ -116,7 +116,8 @@ res, err := opensearch.Search[model.User](ctx, cli, "users", q)
 |---|---|
 | 分层结构 | 去掉接口访问层与 DTO；保留 service / application / storage / 对象层；main 兼任调度入口（组装根豁免仍适用） |
 | 对象流转 | 简化为 **VO ↔ PO**（DTO→VO 一步消失，任务参数直接是业务参数） |
-| 错误处理 | 没有 fault 中间件兜底——任务循环内自行处理：`logx.Error` 记录（bizerror 包装自带操作上下文），并按 `bizerror.Code` 决定重试/跳过/告警（如 CodeDB 重试、CodeValidation 告警并跳过） |
+| 错误处理 | 没有 fault 中间件兜底——任务循环内自行处理：`logx.Error` 记录（bizerror 包装自带操作上下文），并按 `bizerror.Code` 决定重试/跳过/告警（如 commoncodes.DBError 重试、
+  commoncodes.InvalidParameter 告警并跳过） |
 | 日志 | 装配时 `logx.Init(cfgMap)`；每个任务用 `logx.Default().With("job", "xxx_settle")` 派生，日志自动带任务标识 |
 | 分页 | 批处理通常不翻页 |
 | 事务 | 结算/对账类任务用 `GORM().Transaction` + `conn.CallProcTx`（conn.FromGorm 取事务连接），已有完整约定 |
@@ -259,7 +260,7 @@ check-layers:
 ```
 
 ```json
-{"code":"VALIDATION_ERROR","success":false,"errMsg":"参数 email 格式不正确","data":null,"txId":"0c8f..."}
+{"code":"InvalidParameter","success":false,"errMsg":"参数 email 格式不正确","data":null,"txId":"0c8f..."}
 ```
 
 - 构建响应只有两个入口：`response.OK(c, data, opts...)`——code 默认
@@ -436,6 +437,11 @@ tip = i18n.InsertArgs(usercodes.NewMessage(ctx, usercodes.OrderSubmitted), order
 //    code（HTTP 恒 200，无码表、无映射、无注册）
 ```
 
+- **bizerror 零内置码**：码的定义归码包——库级公共码（含 sentinel）在
+  `common/commoncodes`（ParameterRequired/InvalidParameter/InvalidTime/
+  InternalError/NotFound/Unauthorized/Forbidden/Conflict/RateLimited/
+  DBError，中英文字典 + ErrNotFound 等 sentinel 供 errors.Is），业务模块码
+  在各 xxxcodes 码包
 - **唯一底层构造**：`bizerror.NewError(code, message, args...)`——Message 直传、
   args 按序替换 {0} {1} 占位符（模块 NewError 内部先查字典再交给它；基础设施层
   直传 message，根因经 `.AttachError(err, nil)` 链上）

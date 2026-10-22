@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/storage/oracle/base"
 	"github.com/fab-viewer/common-lib/storage/oracle/conn"
 	"github.com/fab-viewer/common-lib/storage/snowflake"
@@ -34,7 +35,7 @@ type Repository[T any] struct {
 // NewRepository 构建仓储。
 func NewRepository[T any](db *conn.DB) (*Repository[T], error) {
 	if db == nil {
-		return nil, bizerror.NewError(bizerror.CodeValidation, "repository.NewRepository db 不能为 nil")
+		return nil, bizerror.NewError(commoncodes.InvalidParameter, "repository.NewRepository db 不能为 nil")
 	}
 	return &Repository[T]{db: db}, nil
 }
@@ -49,7 +50,7 @@ func (r *Repository[T]) Create(ctx context.Context, po *T) error {
 		bp.ID = snowflake.Next()
 	}
 	if err := r.db.GORM().WithContext(ctx).Create(po).Error; err != nil {
-		return bizerror.NewError(bizerror.CodeDB, "repository.Create").AttachError(err, nil)
+		return bizerror.NewError(commoncodes.DBError, "repository.Create").AttachError(err, nil)
 	}
 	return nil
 }
@@ -60,7 +61,7 @@ func (r *Repository[T]) Update(ctx context.Context, po *T) error {
 		return err
 	}
 	if err := r.db.GORM().WithContext(ctx).Save(po).Error; err != nil {
-		return bizerror.NewError(bizerror.CodeDB, "repository.Update").AttachError(err, nil)
+		return bizerror.NewError(commoncodes.DBError, "repository.Update").AttachError(err, nil)
 	}
 	return nil
 }
@@ -69,7 +70,7 @@ func (r *Repository[T]) Update(ctx context.Context, po *T) error {
 func baseOf[T any](po *T) (*base.BasePO, error) {
 	v, ok := any(po).(interface{ auditBase() *base.BasePO })
 	if !ok || v == nil {
-		return nil, bizerror.NewError(bizerror.CodeValidation, "repository.Repository 的类型参数必须嵌入 base.BasePO")
+		return nil, bizerror.NewError(commoncodes.InvalidParameter, "repository.Repository 的类型参数必须嵌入 base.BasePO")
 	}
 	return v.auditBase(), nil
 }

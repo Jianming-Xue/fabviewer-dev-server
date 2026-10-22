@@ -6,6 +6,27 @@
 
 ## [Unreleased]
 
+### Changed（Breaking：库级公共码自 bizerror 迁 commoncodes，值 CamelCase 化）
+
+- **bizerror 零内置码**：CodeOK/CodeInternal/CodeValidation/CodeNotFound/
+  CodeUnauthorized/CodeForbidden/CodeConflict/CodeTooMany/CodeDB/CodeUpstream
+  常量与 ErrValidation/ErrNotFound/ErrUnauthorized/ErrTooMany/ErrDB sentinel
+  全部移除——码的定义归码包（库级在 commoncodes、业务在 xxxcodes），
+  bizerror 只保留 Code 类型与 BizError 本体
+- commoncodes 新增库级码（中英文字典）：NotFound/Unauthorized/Forbidden/
+  Conflict/RateLimited/DBError，并新增 sentinel（ErrNotFound/ErrUnauthorized/
+  ErrInvalidParameter/ErrDBError/ErrRateLimited，供 errors.Is 与根因链）；
+  映射：CodeValidation→InvalidParameter、CodeDB→DBError、CodeTooMany→
+  RateLimited、CodeInternal→InternalError（后两者已有）、CodeOK/CodeUpstream
+  无调用点直接删除
+- **响应体 wire 值随迁**（BizError code 透传）：VALIDATION_ERROR→
+  InvalidParameter、DB_ERROR→DBError、NOT_FOUND→NotFound、UNAUTHORIZED→
+  Unauthorized、FORBIDDEN→Forbidden、CONFLICT→Conflict、RATE_LIMITED→
+  RateLimited、INTERNAL_ERROR→InternalError
+- 全部调用点随迁：存储包（oracle conn/proc/cursor/repository/config、
+  opensearch client/search/init）、api 层、examples、SM（约 40 文件）；
+  bizerror 同包测试改局部 sentinel（Is 按 Code 比较，机制不变）
+
 ### Added（存储组件 Init：oracle/opensearch 组件自治装配）
 
 - `oracle/conn.Init(m, opts...)`（读 oracle 段 → 绑定 Config（camelCase 键

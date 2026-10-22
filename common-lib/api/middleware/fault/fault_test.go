@@ -15,6 +15,7 @@ import (
 	"github.com/fab-viewer/common-lib/api/internal/testutil"
 	"github.com/fab-viewer/common-lib/api/middleware/fault"
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 )
 
 // faultBody 是错误响应的解码目标（response.ApiResponse）。
@@ -35,9 +36,9 @@ func TestFaultErrMsgIsRawError(t *testing.T) {
 		wantCode   string
 		wantErrMsg string
 	}{
-		{"BizError 的 code 直接透传", bizerror.NewError(bizerror.CodeNotFound, "user not found"), "NOT_FOUND", "user not found"},
-		{"BizError 带 Details 只出 Message", bizerror.NewError(bizerror.CodeValidation, "参数非法").
-			AttachError(nil, map[string]any{"field": "email"}), "VALIDATION_ERROR", "参数非法"},
+		{"BizError 的 code 直接透传", bizerror.NewError(commoncodes.NotFound, "user not found"), "NotFound", "user not found"},
+		{"BizError 带 Details 只出 Message", bizerror.NewError(commoncodes.InvalidParameter, "参数非法").
+			AttachError(nil, map[string]any{"field": "email"}), "InvalidParameter", "参数非法"},
 		{"gorm not found 默认 FAIL", gorm.ErrRecordNotFound, "FAIL", gorm.ErrRecordNotFound.Error()},
 		{"wrapped 非 BizError 默认 FAIL", fmt.Errorf("load: %w", gorm.ErrRecordNotFound), "FAIL", "load: " + gorm.ErrRecordNotFound.Error()},
 		{"未知错误根因直出默认 FAIL", errors.New("dial tcp: password=hunter2 refused"), "FAIL", "dial tcp: password=hunter2 refused"},
@@ -79,7 +80,7 @@ func TestFaultBizCodeAndDetailsToLog(t *testing.T) {
 	r := testutil.NewTestEngine()
 	r.Use(fault.Fault())
 	r.GET("/e", func(c *gin.Context) {
-		_ = c.Error(bizerror.NewError(bizerror.CodeValidation, "参数非法").
+		_ = c.Error(bizerror.NewError(commoncodes.InvalidParameter, "参数非法").
 			AttachError(errors.New("root"), map[string]any{"field": "email"}))
 	})
 
@@ -88,12 +89,12 @@ func TestFaultBizCodeAndDetailsToLog(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
 	assert.Equal(t, "参数非法", b.ErrMsg)
 	assert.NotContains(t, w.Body.String(), "email", "Details 不出响应体")
-	assert.Equal(t, "VALIDATION_ERROR", b.Code, "bizerror.Code 直接透传 body code")
+	assert.Equal(t, "InvalidParameter", b.Code, "bizerror.Code 直接透传 body code")
 
 	records := log.Snapshot()
 	require.Len(t, records, 1)
 	code, _ := testutil.KVGet(records[0].KV, "bizCode")
-	assert.Equal(t, string(bizerror.CodeValidation), code, "字符串业务码进日志")
+	assert.Equal(t, string(commoncodes.InvalidParameter), code, "字符串业务码进日志")
 	details, _ := testutil.KVGet(records[0].KV, "details")
 	assert.Contains(t, details, "email", "Details 进日志留痕")
 }
@@ -103,8 +104,8 @@ func TestFaultMultipleErrorsUsesLast(t *testing.T) {
 	r := testutil.NewTestEngine()
 	r.Use(fault.Fault())
 	r.GET("/e", func(c *gin.Context) {
-		_ = c.Error(bizerror.NewError(bizerror.CodeInternal, "first"))
-		_ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "second"))
+		_ = c.Error(bizerror.NewError(commoncodes.InternalError, "first"))
+		_ = c.Error(bizerror.NewError(commoncodes.NotFound, "second"))
 	})
 
 	var b faultBody
@@ -118,7 +119,7 @@ func TestFaultSkipsWhenWritten(t *testing.T) {
 	r.Use(fault.Fault())
 	r.GET("/e", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"written": true})
-		_ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "ignored"))
+		_ = c.Error(bizerror.NewError(commoncodes.NotFound, "ignored"))
 	})
 
 	w := testutil.DoGet(r, "/e")

@@ -13,6 +13,7 @@ import (
 
 	server "github.com/fab-viewer/common-lib/cmd/server"
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 )
 
 func doGet(r http.Handler, target string) *httptest.ResponseRecorder {
@@ -82,12 +83,12 @@ func TestNewEngineBizErrorCodePassthrough(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := server.NewEngine()
 	r.GET("/e", func(c *gin.Context) {
-		_ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "user not found"))
+		_ = c.Error(bizerror.NewError(commoncodes.NotFound, "user not found"))
 	})
 
 	w := doGet(r, "/e")
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), `"code":"NOT_FOUND"`, "bizerror.Code 直接透传")
+	assert.Contains(t, w.Body.String(), `"code":"NotFound"`, "bizerror.Code 直接透传")
 }
 
 func TestNewEngineWithSkipPaths(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 )
 
 func TestCursorLifecycle(t *testing.T) {
@@ -52,7 +53,7 @@ func TestCursorScanMismatch(t *testing.T) {
 	assert.Error(t, err)
 	e, ok := bizerror.From(err)
 	assert.True(t, ok)
-	assert.Equal(t, bizerror.CodeDB, e.Code)
+	assert.Equal(t, commoncodes.DBError, e.Code)
 	assert.NoError(t, cur.Close())
 	assert.NoError(t, mock.ExpectationsWereMet())
 }

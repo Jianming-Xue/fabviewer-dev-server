@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/common/logx"
 	"github.com/fab-viewer/common-lib/storage/oracle/config"
 	"github.com/fab-viewer/common-lib/storage/oracle/conn"
@@ -89,12 +90,12 @@ const usage = `
 func parseDSN(dsn string) (config.Config, error) {
 	at := strings.LastIndex(dsn, "@")
 	if at <= 0 || at == len(dsn)-1 {
-		return config.Config{}, bizerror.NewError(bizerror.CodeValidation, "DSN 应为 user/password@host[:port]/service 格式, got {0}", dsn)
+		return config.Config{}, bizerror.NewError(commoncodes.InvalidParameter, "DSN 应为 user/password@host[:port]/service 格式, got {0}", dsn)
 	}
 	cred, addr := dsn[:at], dsn[at+1:]
 	slash := strings.Index(addr, "/")
 	if slash <= 0 {
-		return config.Config{}, bizerror.NewError(bizerror.CodeValidation, "DSN 缺少 /service 段, got {0}", dsn)
+		return config.Config{}, bizerror.NewError(commoncodes.InvalidParameter, "DSN 缺少 /service 段, got {0}", dsn)
 	}
 	hostPort, service := addr[:slash], addr[slash+1:]
 	host, portStr, hasPort := strings.Cut(hostPort, ":")
@@ -102,13 +103,13 @@ func parseDSN(dsn string) (config.Config, error) {
 	if hasPort {
 		p, err := strconv.Atoi(portStr)
 		if err != nil || p <= 0 {
-			return config.Config{}, bizerror.NewError(bizerror.CodeValidation, "DSN 端口非法: {0}", portStr)
+			return config.Config{}, bizerror.NewError(commoncodes.InvalidParameter, "DSN 端口非法: {0}", portStr)
 		}
 		port = p
 	}
 	user, password, ok := strings.Cut(cred, "/")
 	if !ok || user == "" || password == "" {
-		return config.Config{}, bizerror.NewError(bizerror.CodeValidation, "DSN 凭据应为 user/password 格式, got {0}", cred)
+		return config.Config{}, bizerror.NewError(commoncodes.InvalidParameter, "DSN 凭据应为 user/password 格式, got {0}", cred)
 	}
 	cfg := config.Config{
 		User:        user,
@@ -147,7 +148,7 @@ END CL_DEMO_LIST;`,
 	}
 	for _, s := range stmts {
 		if _, err := db.SQL().ExecContext(ctx, s); err != nil {
-			return bizerror.NewError(bizerror.CodeDB, "bootstrap 建演示对象失败: %.60s", s).AttachError(err, nil)
+			return bizerror.NewError(commoncodes.DBError, "bootstrap 建演示对象失败: %.60s", s).AttachError(err, nil)
 		}
 	}
 	return nil
@@ -168,29 +169,29 @@ func demoGormCRUD(ctx context.Context, db *conn.DB, log logx.Logger) error {
 
 	for i := int64(1); i <= 3; i++ {
 		if err := g.Create(&gadget{ID: i, Name: "gadget-" + strconv.FormatInt(i, 10)}).Error; err != nil {
-			return bizerror.NewError(bizerror.CodeDB, "GORM Create").AttachError(err, nil)
+			return bizerror.NewError(commoncodes.DBError, "GORM Create").AttachError(err, nil)
 		}
 	}
 	var total int64
 	if err := g.Model(&gadget{}).Count(&total).Error; err != nil {
-		return bizerror.NewError(bizerror.CodeDB, "GORM Count").AttachError(err, nil)
+		return bizerror.NewError(commoncodes.DBError, "GORM Count").AttachError(err, nil)
 	}
 	log.Info("gorm create", "rows", total)
 
 	var got gadget
 	if err := g.Where("ID = ?", int64(2)).First(&got).Error; err != nil {
-		if errors.Is(err, bizerror.ErrNotFound) {
-			return bizerror.NewError(bizerror.CodeDB, "GORM First ID=2 不应缺失").AttachError(err, nil)
+		if errors.Is(err, commoncodes.ErrNotFound) {
+			return bizerror.NewError(commoncodes.DBError, "GORM First ID=2 不应缺失").AttachError(err, nil)
 		}
-		return bizerror.NewError(bizerror.CodeDB, "GORM First ID=2").AttachError(err, nil)
+		return bizerror.NewError(commoncodes.DBError, "GORM First ID=2").AttachError(err, nil)
 	}
 	log.Info("gorm first", "id", got.ID, "name", got.Name)
 
 	if err := g.Model(&got).Update("NAME", "gadget-2-updated").Error; err != nil {
-		return bizerror.NewError(bizerror.CodeDB, "GORM Update ID=2").AttachError(err, nil)
+		return bizerror.NewError(commoncodes.DBError, "GORM Update ID=2").AttachError(err, nil)
 	}
 	if err := g.Delete(&gadget{}, 3).Error; err != nil {
-		return bizerror.NewError(bizerror.CodeDB, "GORM Delete ID=3").AttachError(err, nil)
+		return bizerror.NewError(commoncodes.DBError, "GORM Delete ID=3").AttachError(err, nil)
 	}
 	log.Info("gorm update+delete done")
 	return nil

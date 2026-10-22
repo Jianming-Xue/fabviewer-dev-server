@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	commonconfig "github.com/fab-viewer/common-lib/common/config"
 	"github.com/fab-viewer/common-lib/storage/oracle/config"
 )
@@ -32,7 +33,7 @@ func Init(m map[string]any, opts ...Option) (*DB, func(), error) {
 	}
 	var cfg config.Config
 	if err := commonconfig.Bind(section, &cfg); err != nil {
-		return nil, nil, bizerror.NewError(bizerror.CodeValidation,
+		return nil, nil, bizerror.NewError(commoncodes.InvalidParameter,
 			"oracle.Init 配置段 {0} 绑定失败", SectionName).AttachError(err, nil)
 	}
 	db, err := Open(context.Background(), cfg, opts...)

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/common/paging"
 )
 
@@ -113,10 +114,10 @@ func TestSearch(t *testing.T) {
 			"status": 404}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, bizerror.ErrNotFound)
+		require.ErrorIs(t, err, commoncodes.ErrNotFound)
 		e, ok := bizerror.From(err)
 		require.True(t, ok)
-		assert.Equal(t, bizerror.CodeNotFound, e.Code)
+		assert.Equal(t, commoncodes.NotFound, e.Code)
 		assert.Contains(t, err.Error(), "no such index [orders]")
 		assert.Contains(t, err.Error(), "opensearch.Search index=orders")
 		ft.assertAllClosed(t)
@@ -130,7 +131,7 @@ func TestSearch(t *testing.T) {
 			"status": 400}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", map[string]any{"match": "bad-query"})
-		require.ErrorIs(t, err, bizerror.ErrValidation)
+		require.ErrorIs(t, err, commoncodes.ErrInvalidParameter)
 		assert.Contains(t, err.Error(), "query_shard_exception: Failed to parse query")
 		ft.assertAllClosed(t)
 	})
@@ -140,7 +141,7 @@ func TestSearch(t *testing.T) {
 			"error": {"type": "internal_error", "reason": "node crashed"}, "status": 500}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, bizerror.ErrDB)
+		require.ErrorIs(t, err, commoncodes.ErrDBError)
 		ft.assertAllClosed(t)
 	})
 
@@ -148,7 +149,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{status: http.StatusInternalServerError, body: `cluster down`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, bizerror.ErrDB)
+		require.ErrorIs(t, err, commoncodes.ErrDBError)
 		ft.assertAllClosed(t)
 	})
 
@@ -156,7 +157,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{status: http.StatusTooManyRequests, body: `{"error":"too many","status":429}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, bizerror.ErrTooMany)
+		require.ErrorIs(t, err, commoncodes.ErrRateLimited)
 		ft.assertAllClosed(t)
 	})
 
@@ -164,7 +165,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{failErr: context.DeadlineExceeded}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, bizerror.ErrDB)
+		require.ErrorIs(t, err, commoncodes.ErrDBError)
 		assert.Contains(t, err.Error(), "opensearch.Search index=orders")
 	})
 
@@ -175,7 +176,7 @@ func TestSearch(t *testing.T) {
 			]}}`}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", nil)
-		require.ErrorIs(t, err, bizerror.ErrDB)
+		require.ErrorIs(t, err, commoncodes.ErrDBError)
 		assert.Contains(t, err.Error(), "_id=o-9")
 		ft.assertAllClosed(t)
 	})
@@ -185,7 +186,7 @@ func TestSearch(t *testing.T) {
 		cli := newFakeClient(t, ft)
 		for _, sort := range []string{"", "-", "+"} {
 			_, err := Search[orderDoc](ctx, cli, "orders", nil, WithSorts(sort))
-			require.ErrorIs(t, err, bizerror.ErrValidation, "排序项 %q 应被拒绝", sort)
+			require.ErrorIs(t, err, commoncodes.ErrInvalidParameter, "排序项 %q 应被拒绝", sort)
 		}
 		assert.Equal(t, 0, ft.requestCount())
 	})
@@ -194,7 +195,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "orders", map[string]any{"fn": func() {}})
-		require.ErrorIs(t, err, bizerror.ErrValidation)
+		require.ErrorIs(t, err, commoncodes.ErrInvalidParameter)
 		assert.Equal(t, 0, ft.requestCount())
 	})
 
@@ -202,7 +203,7 @@ func TestSearch(t *testing.T) {
 		ft := &fakeTransport{}
 		cli := newFakeClient(t, ft)
 		_, err := Search[orderDoc](ctx, cli, "", nil)
-		require.ErrorIs(t, err, bizerror.ErrValidation)
+		require.ErrorIs(t, err, commoncodes.ErrInvalidParameter)
 		assert.Equal(t, 0, ft.requestCount())
 	})
 }

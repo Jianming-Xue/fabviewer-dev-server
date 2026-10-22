@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/storage"
 	"github.com/fab-viewer/common-lib/storage/opensearch/config"
 )
@@ -85,8 +86,8 @@ func TestConfig_sdkConfig(t *testing.T) {
 func TestConfig_sdkConfig_EmptyAddrs(t *testing.T) {
 	_, err := sdkConfig(config.Config{})
 	require.Error(t, err)
-	require.ErrorIs(t, err, bizerror.ErrValidation)
+	require.ErrorIs(t, err, commoncodes.ErrInvalidParameter)
 	e, ok := bizerror.From(err)
 	require.True(t, ok)
-	assert.Equal(t, bizerror.CodeValidation, e.Code)
+	assert.Equal(t, commoncodes.InvalidParameter, e.Code)
 }

@@ -7,4 +7,10 @@ var MessagesZh = map[string]string{
 	"InvalidParameter":  "参数 {0} 非法",
 	"InvalidTime":       "参数 {0} 的时间值 {1} 非法，应为 yyyyMMdd / yyyyMMddHHmmss / 13 位毫秒时间戳",
 	"InternalError":     "内部错误",
+	"NotFound":          "未找到",
+	"Unauthorized":      "未授权",
+	"Forbidden":         "禁止访问",
+	"Conflict":          "资源冲突",
+	"RateLimited":       "请求过于频繁",
+	"DBError":           "数据库访问错误",
 }

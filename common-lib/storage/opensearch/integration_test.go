@@ -14,7 +14,7 @@ import (
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
 	"github.com/stretchr/testify/require"
 
-	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/common/paging"
 	"github.com/fab-viewer/common-lib/storage/opensearch"
 	"github.com/fab-viewer/common-lib/storage/opensearch/config"
@@ -97,6 +97,6 @@ func TestOpenSearchLifecycle(t *testing.T) {
 
 	t.Run("缺失索引搜索翻译为 NOT_FOUND", func(t *testing.T) {
 		_, err := search.Search[order](ctx, cli, index+"-missing", nil)
-		require.ErrorIs(t, err, bizerror.ErrNotFound)
+		require.ErrorIs(t, err, commoncodes.ErrNotFound)
 	})
 }

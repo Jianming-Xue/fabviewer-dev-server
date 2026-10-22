@@ -2,6 +2,7 @@ package opensearch
 
 import (
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	commonconfig "github.com/fab-viewer/common-lib/common/config"
 	"github.com/fab-viewer/common-lib/storage/opensearch/config"
 )
@@ -30,11 +31,11 @@ func Init(m map[string]any) (*Client, func(), error) {
 	}
 	var cfg config.Config
 	if err := commonconfig.Bind(section, &cfg); err != nil {
-		return nil, nil, bizerror.NewError(bizerror.CodeValidation,
+		return nil, nil, bizerror.NewError(commoncodes.InvalidParameter,
 			"opensearch.Init 配置段 {0} 绑定失败", SectionName).AttachError(err, nil)
 	}
 	if len(cfg.Addrs) == 0 {
-		return nil, nil, bizerror.NewError(bizerror.CodeValidation,
+		return nil, nil, bizerror.NewError(commoncodes.InvalidParameter,
 			"opensearch.Init 配置段 {0} 缺 addrs", SectionName)
 	}
 	cli, err := Open(cfg)

@@ -7,24 +7,10 @@ import (
 	"strings"
 )
 
-// Code 是面向调用方的字符串错误码：语义分类 + 状态码映射键。
-// 业务模块的 code 即模块错误文件中的 key（如 "UserNotFound"）。
+// Code 是面向调用方的字符串错误码，与响应体业务 code 同一命名空间。
+// 本包零内置码：库级公共码在 common/commoncodes，业务模块码在各
+// xxxcodes 码包（key 即码）。
 type Code string
-
-// 库级通用错误码（状态码映射表 api.DefaultStatusMap 的键）。
-// 业务模块自带模块内 key，建议命名足够具体。
-const (
-	CodeOK           Code = "OK"
-	CodeInternal     Code = "INTERNAL_ERROR"
-	CodeValidation   Code = "VALIDATION_ERROR"
-	CodeNotFound     Code = "NOT_FOUND"
-	CodeUnauthorized Code = "UNAUTHORIZED"
-	CodeForbidden    Code = "FORBIDDEN"
-	CodeConflict     Code = "CONFLICT"
-	CodeTooMany      Code = "RATE_LIMITED"
-	CodeDB           Code = "DB_ERROR"
-	CodeUpstream     Code = "UPSTREAM_ERROR"
-)
 
 // BizError 是统一业务错误：Code 定语义、Message 面向调用方可展示、Err 保留
 // 根因链（只进日志不进响应）、Details 携带结构化明细（只进日志）。
@@ -118,16 +104,3 @@ func From(err error) (*BizError, bool) {
 	}
 	return nil, false
 }
-
-// 库级 sentinel 错误，供 errors.Is 判断（业务模块错误走各自的 code）：
-//
-//	if errors.Is(err, bizerror.ErrNotFound) { ... }
-//
-// 仅保留有真实调用点的码；需要新 sentinel 时一行即可补回。
-var (
-	ErrValidation   = NewError(CodeValidation, "validation failed")
-	ErrNotFound     = NewError(CodeNotFound, "resource not found")
-	ErrUnauthorized = NewError(CodeUnauthorized, "unauthorized")
-	ErrTooMany      = NewError(CodeTooMany, "too many requests")
-	ErrDB           = NewError(CodeDB, "database error")
-)

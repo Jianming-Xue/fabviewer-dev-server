@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/storage"
 )
 
@@ -90,14 +91,14 @@ func TestConfigValidate(t *testing.T) {
 		code    bizerror.Code
 	}{
 		{name: "合法配置", mutate: func(c Config) Config { return c }},
-		{name: "缺 User", mutate: func(c Config) Config { c.User = ""; return c }, wantErr: true, code: bizerror.CodeValidation},
-		{name: "缺 Host", mutate: func(c Config) Config { c.Host = ""; return c }, wantErr: true, code: bizerror.CodeValidation},
-		{name: "缺 ServiceName", mutate: func(c Config) Config { c.ServiceName = ""; return c }, wantErr: true, code: bizerror.CodeValidation},
+		{name: "缺 User", mutate: func(c Config) Config { c.User = ""; return c }, wantErr: true, code: commoncodes.InvalidParameter},
+		{name: "缺 Host", mutate: func(c Config) Config { c.Host = ""; return c }, wantErr: true, code: commoncodes.InvalidParameter},
+		{name: "缺 ServiceName", mutate: func(c Config) Config { c.ServiceName = ""; return c }, wantErr: true, code: commoncodes.InvalidParameter},
 		{
 			name:    "LogLevel 非法",
 			mutate:  func(c Config) Config { c.LogLevel = LogLevel("loud"); return c },
 			wantErr: true,
-			code:    bizerror.CodeValidation,
+			code:    commoncodes.InvalidParameter,
 		},
 	}
 	for _, tt := range tests {

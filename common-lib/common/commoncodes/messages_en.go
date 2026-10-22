@@ -9,4 +9,10 @@ var MessagesEn = map[string]string{
 	"InvalidParameter":  "invalid parameter {0}",
 	"InvalidTime":       "parameter {0}: invalid time {1}, want yyyyMMdd / yyyyMMddHHmmss / 13-digit millis",
 	"InternalError":     "internal error",
+	"NotFound":          "not found",
+	"Unauthorized":      "unauthorized",
+	"Forbidden":         "forbidden",
+	"Conflict":          "conflict",
+	"RateLimited":       "rate limited",
+	"DBError":           "database error",
 }

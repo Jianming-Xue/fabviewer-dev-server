@@ -13,10 +13,16 @@ import (
 // 原文（fault 直接透传为响应体业务 code）。本包即模块码命名空间，
 // 引用形如 commoncodes.UserNotFound。
 const (
+	Conflict          bizerror.Code = "Conflict"
+	DBError           bizerror.Code = "DBError"
+	Forbidden         bizerror.Code = "Forbidden"
 	InternalError     bizerror.Code = "InternalError"
 	InvalidParameter  bizerror.Code = "InvalidParameter"
 	InvalidTime       bizerror.Code = "InvalidTime"
+	NotFound          bizerror.Code = "NotFound"
 	ParameterRequired bizerror.Code = "ParameterRequired"
+	RateLimited       bizerror.Code = "RateLimited"
+	Unauthorized      bizerror.Code = "Unauthorized"
 )
 
 // dict 本模块多语言字典（私有，语言包编译期注册）。

@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 )
 
 // godrorDriver 是基于 godror（CGO，运行期依赖 Oracle Instant Client）的默认驱动适配器。
@@ -34,14 +35,14 @@ func (godrorDriver) GormDialector(dsn string) gorm.Dialector {
 // NewCursor 实现 driverAdapter，按 godror 官方推荐用法包装 REF CURSOR。
 func (godrorDriver) NewCursor(ctx context.Context, q Execer, rows driver.Rows) (*Cursor, error) {
 	if q == nil {
-		return nil, bizerror.NewError(bizerror.CodeValidation, "oracle.NewCursor q 不能为 nil")
+		return nil, bizerror.NewError(commoncodes.InvalidParameter, "oracle.NewCursor q 不能为 nil")
 	}
 	if rows == nil {
-		return nil, bizerror.NewError(bizerror.CodeValidation, "oracle.NewCursor rows 不能为 nil")
+		return nil, bizerror.NewError(commoncodes.InvalidParameter, "oracle.NewCursor rows 不能为 nil")
 	}
 	sqlRows, err := godror.WrapRows(ctx, q, rows)
 	if err != nil {
-		return nil, bizerror.NewError(bizerror.CodeDB, "oracle.NewCursor godror.WrapRows").AttachError(err, nil)
+		return nil, bizerror.NewError(commoncodes.DBError, "oracle.NewCursor godror.WrapRows").AttachError(err, nil)
 	}
 	return &Cursor{rows: sqlRows}, nil
 }

@@ -48,7 +48,7 @@ common/config     配置加载：LoadConfig（{appName}_CFG→application.yml，
                   叶子环境变量覆盖 security.log.level 式）、GetSection[T]（mapstructure
                   绑定）、Get、ValidateIsEmpty/IsNumber/IsBoolean（宽松判断）
 common/bizerror   BizError（唯一构造 NewError(code,msg,args...)，链式 InsertArgs/AttachError，
-                  IsError/From）；原 fverr 更名（2026-10-21）
+                  IsError/From）；零内置码——码归码包；原 fverr 更名（2026-10-21）
 common/paging     PageRequest{PageIndex,PageSize}（请求贯穿全链路；默认 1/10、
                   上限 MaxPageSize=100）、Pageable[T]（出参，含 totalPage=ceil）
 common/logx       日志完整工具：Init(m) 唯一初始化（配置结构私有）+ 包级
@@ -58,10 +58,12 @@ common/rctx       RuntimeContext（五字段私有，WithXxx 链式赋值/FromXx
                   User 即审计操作者——原 actortx 包已并入删除）
 common/i18n       Bundles 模块多语言字典 + Accept-Language 解析 + InsertArgs
                   模板插参（只提供能力，业务译文每模块自维护；仅依赖 rctx）
-common/commoncodes 公共码字典（中英文，默认英文；key 即响应体业务 code，
+common/commoncodes 库级公共码字典（中英文，默认英文；key 即响应体业务 code，
                   fault 直接透传）：ParameterRequired/InvalidParameter/
-                  InvalidTime/InternalError；request 校验路径与业务服务可直接
-                  引用组织错误或文案；i18nerr 同款模式生成
+                  InvalidTime/InternalError/NotFound/Unauthorized/Forbidden/
+                  Conflict/RateLimited/DBError + 库级 sentinel（ErrNotFound 等
+                  供 errors.Is，2026-10-22 自 bizerror 迁入）；request 校验路径
+                  与业务服务可直接引用组织错误或文案；i18nerr 同款模式生成
 common/units      输入转换原语：Bool（int：1→true 其余含 0→false）、
                   ParseDate/ParseDateTime（yyyyMMdd / yyyyMMddHHmmss → 本地
                   时间）、ParseEpochMillis（13 位毫秒时间戳）；零三方依赖
@@ -282,8 +284,10 @@ errMsg 直取错误消息（BizError 为 Message、其余 err.Error() 原文）�
   携带固定字段用 `logx.Default().With(...)`
 - 配置只写 application.yml（+环境变量覆盖），不写代码里；新增组件配置 =
   组件提供私有配置结构 + `Init(m)` + GetSection 绑定 + 存在才校验
-- 出口对 BizError 按**自身 Code** 映射状态码，根因不参与（要 404 语义请
-  自带模块码，经 WithCodeMap 映射业务 code）
+- 码的唯一归宿是码包：库级公共码（含 sentinel）在 commoncodes，业务模块
+  码在 xxxcodes；bizerror 零内置码（库级码自 bizerror 迁 commoncodes，
+  值随之 CamelCase 化：DB_ERROR→DBError、VALIDATION_ERROR→InvalidParameter
+  等响应体 wire 值有变，2026-10-22）
 - GORM 出口裸 `*gorm.DB`，链式调用记得 `.WithContext(ctx)`
 - 事务内调存储过程：`conn.FromGorm(tx)` 取 Execer → `conn.CallProcTx`
 - 新增跨层共享概念：在 `common/` 加零依赖小包并加进 depguard strict 白名单
