@@ -63,9 +63,9 @@ func TestEngineAndRequests(t *testing.T) {
 
 func TestDecode(t *testing.T) {
 	r := testutil.NewTestEngine()
-	r.GET("/json", func(c *gin.Context) { c.String(http.StatusOK, `{"code":200}`) })
+	r.GET("/json", func(c *gin.Context) { c.String(http.StatusOK, `{"code":"OK"}`) })
 
 	b := testutil.Decode(t, testutil.DoGet(r, "/json"))
-	assert.Equal(t, 200, b.Code)
+	assert.Equal(t, "OK", b.Code)
 	assert.False(t, b.Success)
 }

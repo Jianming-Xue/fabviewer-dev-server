@@ -148,7 +148,7 @@ replace github.com/fab-viewer/common-lib => ../../services/common-lib
 `cmd/server`，业务只传模块错误码表并注册路由：
 
 ```go
-r := server.NewEngine(usererrors.CodeMap()) // 模块业务码表是业务唯一必传差异
+r := server.NewEngine() // 模块错误码（bizerror.Code）由 fault 直接透传响应体 code
 
 r.GET("/api/users", func(c *gin.Context) {
     q := request.PageQuery(c) // 解析 ?pageIndex=&pageSize=，非法值回退默认
@@ -259,23 +259,23 @@ check-layers:
 指定**：single 对象或 multi 对象集合（分页 pageable 整体作为 data）。
 
 ```json
-{"code":1,"success":true,"errMsg":"",
+{"code":"OK","success":true,"errMsg":"",
  "data":{"pageIndex":2,"pageSize":10,"totalSize":57,"totalPage":6,"data":[...]},
  "txId":"0c8f..."}
 ```
 
 ```json
-{"code":0,"success":false,"errMsg":"参数 email 格式不正确","data":null,"txId":"0c8f..."}
+{"code":"VALIDATION_ERROR","success":false,"errMsg":"参数 email 格式不正确","data":null,"txId":"0c8f..."}
 ```
 
-- 构建响应只有两个入口：`response.OK(c, data, opts...)`——code 默认 1、
-  success=true、errMsg 默认空串（可 `WithErrMsg` 补充提示）；
-  `response.Fail(c, errMsg, opts...)`——code 默认 0（可 `WithCode` 换成
-  业务自己的错误码）、success 恒 false、**data 恒 nil**、errMsg 必填
-  （空串兜底 "internal error"）。常规业务错误走 `c.Error(err)` 交
-  fault 统一处理：模块错误码经 `fault.WithCodeMap` 映射成
-  业务 code 进响应体（未映射 0），errMsg 直取错误消息（BizError 为
-  Message，其余为 err.Error() 原文），出口零翻译
+- 构建响应只有两个入口：`response.OK(c, data, opts...)`——code 默认
+  **"OK"**、success=true、errMsg 默认空串（可 `WithErrMsg` 补充提示）；
+  `response.Fail(c, errMsg, opts...)`——code 默认 **"FAIL"**（可
+  `WithCode` 换成业务错误码）、success 恒 false、**data 恒 nil**、errMsg
+  必填（空串兜底 "internal error"）。常规业务错误走 `c.Error(err)` 交
+  fault 统一处理：**BizError 的 code 字符串直接透传响应体 code**（如
+  "UserNotFound"），errMsg 直取错误消息（BizError 为 Message，其余为
+  err.Error() 原文），出口零翻译
 - 分页请求参数为 `pageIndex`/`pageSize`（`request.PageQuery` 解析为
   `paging.PageRequest`；非法回退默认值 **1/10**，pageSize 上限
   `MaxPageSize=100`）；分页出参 **pageable**（`paging.Pageable`：
@@ -428,7 +428,7 @@ return usererrors.NewUserNotFound(ctx).
 _ = c.Error(usererrors.NewConfirmDeleteUser(ctx).InsertArgs(u.Name))
 // → zh："确认删除用户 zhangsan 吗？"  en："confirm deleting user zhangsan?"
 
-// 4. 出口（fault）errMsg 直取错误消息；模块码经 WithCodeMap 映射业务 code
+// 4. 出口（fault）errMsg 直取错误消息；BizError 的 code 直接透传响应体 code
 //    （HTTP 恒 200，映射值进响应体 code）
 r.Use(fault.Fault(
     fault.WithCodeMap(map[bizerror.Code]int{
@@ -446,9 +446,9 @@ r.Use(fault.Fault(
   模块默认语言 → key 原文
 - 多模块各自字典互不感知（无全局注册、无跨模块 key 冲突）；表并发安全
 
-业务错误码 → 响应体业务 code 的映射**完全由业务提供**（`fault.WithCodeMap`，
-如 `{usererrors.CodeUserNotFound: 1001}`；未映射的码含内置码一律按 0；HTTP
-状态码恒 200，库内不设默认业务码表）。fault 出口不做翻译或固定文案替换
+**code 是字符串、与 bizerror.Code 同一命名空间**（统一业务码体系）：
+BizError 的 code 由 fault 直接透传进响应体，非 BizError 为默认 "FAIL"；
+OK 默认 "OK"。HTTP 状态码恒 200。fault 出口不做翻译或固定文案替换
 （BizError errMsg 取 Message，其余取 err.Error() 原文——未知错误根因直出
 响应体，业务方拍板取舍；失败日志带调用栈留痕）。
 | CONFLICT | 409 |
@@ -456,7 +456,7 @@ r.Use(fault.Fault(
 | INTERNAL_ERROR / DB_ERROR | 500 |
 | UPSTREAM_ERROR | 502 |
 
-- 模块码（如 `usererrors.CodeUserNotFound`）经 `WithCodeMap` 映射成业务 code；
+- 模块码（如 `usererrors.CodeUserNotFound`）由 fault 直接透传为响应体 code；
   未映射的自定义码按 500 处理。
 - 未知错误的 errMsg 为 err.Error() 原文直出响应体（根因随 `request fault` 日志带调用栈留痕）。
 - `gorm.ErrRecordNotFound` / `sql.ErrNoRows` 不做内置翻译（errMsg 直出原文）。

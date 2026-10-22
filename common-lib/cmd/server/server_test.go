@@ -23,7 +23,7 @@ func TestNewServer(t *testing.T) {
 		IdleTimeout:       60 * time.Second,
 		ShutdownTimeout:   2 * time.Second,
 	}
-	engine := server.NewEngine(nil)
+	engine := server.NewEngine()
 	srv, cleanup := server.NewServer(cfg, engine)
 
 	assert.Equal(t, ":9090", srv.Addr)
@@ -43,7 +43,7 @@ func TestRunListenError(t *testing.T) {
 	require.NoError(t, err)
 	defer ln.Close()
 
-	srv := &http.Server{Addr: ln.Addr().String(), Handler: server.NewEngine(nil)}
+	srv := &http.Server{Addr: ln.Addr().String(), Handler: server.NewEngine()}
 	err = server.Run(srv)
 	require.Error(t, err)
 }

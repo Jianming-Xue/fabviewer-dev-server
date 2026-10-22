@@ -23,13 +23,13 @@ func TestGuardPanickingHandler(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	var body struct {
-		Code    int    `json:"code"`
+		Code    string `json:"code"`
 		Success bool   `json:"success"`
 		ErrMsg  string `json:"errMsg"`
 		Data    any    `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.Equal(t, 0, body.Code, "Fail 默认业务码 0")
+	assert.Equal(t, "FAIL", body.Code, "Fail 默认业务码 FAIL")
 	assert.Nil(t, body.Data)
 	assert.False(t, body.Success)
 	assert.Equal(t, "internal error", body.ErrMsg, "不向调用方泄漏 panic 内容")

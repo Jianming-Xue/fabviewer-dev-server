@@ -6,6 +6,18 @@
 
 ## [Unreleased]
 
+### Changed（Breaking：code 统一为字符串，与 bizerror.Code 同一命名空间）
+
+- `ApiResponse.Code` int → **string**：`OK` 默认 **"OK"**、`Fail` 默认
+  **"FAIL"**（常量 `response.CodeOK/CodeFail`），`WithCode(code string)`
+- **fault 处理 BizError 时 code 直接透传**（`bizerror.Code` 字符串即响应
+  体业务 code，如 "UserNotFound"）；非 BizError 默认 "FAIL"
+- **WithCodeMap 机制删除**（字符串统一后映射无意义）：`fault.WithCodeMap`、
+  `server.NewEngine` 的 codeMap 参数、SM 的 `usererrors.CodeMap()` 全部
+  移除——模块码零注册零映射，响应体 code 即模块码
+- i18nerr 生成器注释随迁（Code 常量即响应体业务 code），三处 errors_gen
+  重新生成；wire_gen 随 NewEngine 无参化重生成
+
 ### Changed（Breaking：errorhandler 更名 fault 并简化职责）
 
 - `api/middleware/errorhandler` → **`api/middleware/fault`**，

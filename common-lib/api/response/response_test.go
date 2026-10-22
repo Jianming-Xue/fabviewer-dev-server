@@ -25,7 +25,7 @@ func TestOK(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	b := testutil.Decode(t, w)
-	assert.Equal(t, 1, b.Code, "业务 code 默认 1")
+	assert.Equal(t, "OK", b.Code, "业务 code 默认 OK")
 	assert.True(t, b.Success)
 	assert.Empty(t, b.ErrMsg, "成功时 errMsg 默认空串（字段保留，同构）")
 	assert.JSONEq(t, `{"k":"v"}`, string(b.Data), "data 由 handler 给定")
@@ -84,26 +84,26 @@ func TestFail(t *testing.T) {
 		name       string
 		errMsg     string
 		opts       []response.Option
-		wantCode   int
+		wantCode   string
 		wantErrMsg string
 	}{
 		{
 			name:       "默认 code 0",
 			errMsg:     "boom",
-			wantCode:   0,
+			wantCode:   "FAIL",
 			wantErrMsg: "boom",
 		},
 		{
 			name:       "WithCode 换业务码",
 			errMsg:     "user not found",
-			opts:       []response.Option{response.WithCode(1001)},
-			wantCode:   1001,
+			opts:       []response.Option{response.WithCode("USER_NOT_FOUND")},
+			wantCode:   "USER_NOT_FOUND",
 			wantErrMsg: "user not found",
 		},
 		{
 			name:       "空 errMsg 兜底 internal error",
 			errMsg:     "",
-			wantCode:   0,
+			wantCode:   "FAIL",
 			wantErrMsg: "internal error",
 		},
 	}

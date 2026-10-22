@@ -19,7 +19,7 @@ import (
 
 // faultBody 是错误响应的解码目标（response.ApiResponse）。
 type faultBody struct {
-	Code    int    `json:"code"`
+	Code    string `json:"code"`
 	Success bool   `json:"success"`
 	ErrMsg  string `json:"errMsg"`
 	Data    any    `json:"data"`
@@ -32,16 +32,16 @@ func TestFaultErrMsgIsRawError(t *testing.T) {
 	tests := []struct {
 		name       string
 		err        error
-		wantCode   int
+		wantCode   string
 		wantErrMsg string
 	}{
-		{"BizError 未映射 code 0", bizerror.NewError(bizerror.CodeNotFound, "user not found"), 0, "user not found"},
+		{"BizError 的 code 直接透传", bizerror.NewError(bizerror.CodeNotFound, "user not found"), "NOT_FOUND", "user not found"},
 		{"BizError 带 Details 只出 Message", bizerror.NewError(bizerror.CodeValidation, "参数非法").
-			AttachError(nil, map[string]any{"field": "email"}), 0, "参数非法"},
-		{"gorm not found 不再翻译", gorm.ErrRecordNotFound, 0, gorm.ErrRecordNotFound.Error()},
-		{"wrapped 错误", fmt.Errorf("load: %w", gorm.ErrRecordNotFound), 0, "load: " + gorm.ErrRecordNotFound.Error()},
-		{"未知错误根因直出", errors.New("dial tcp: password=hunter2 refused"), 0, "dial tcp: password=hunter2 refused"},
-		{"context canceled 不再特判", contextCanceled(), 0, "context canceled"},
+			AttachError(nil, map[string]any{"field": "email"}), "VALIDATION_ERROR", "参数非法"},
+		{"gorm not found 默认 FAIL", gorm.ErrRecordNotFound, "FAIL", gorm.ErrRecordNotFound.Error()},
+		{"wrapped 非 BizError 默认 FAIL", fmt.Errorf("load: %w", gorm.ErrRecordNotFound), "FAIL", "load: " + gorm.ErrRecordNotFound.Error()},
+		{"未知错误根因直出默认 FAIL", errors.New("dial tcp: password=hunter2 refused"), "FAIL", "dial tcp: password=hunter2 refused"},
+		{"context canceled 不再特判默认 FAIL", contextCanceled(), "FAIL", "context canceled"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -88,7 +88,7 @@ func TestFaultBizCodeAndDetailsToLog(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
 	assert.Equal(t, "参数非法", b.ErrMsg)
 	assert.NotContains(t, w.Body.String(), "email", "Details 不出响应体")
-	assert.NotContains(t, w.Body.String(), "VALIDATION_ERROR", "内部码格式不出响应体")
+	assert.Equal(t, "VALIDATION_ERROR", b.Code, "bizerror.Code 直接透传 body code")
 
 	records := log.Snapshot()
 	require.Len(t, records, 1)
@@ -96,21 +96,6 @@ func TestFaultBizCodeAndDetailsToLog(t *testing.T) {
 	assert.Equal(t, string(bizerror.CodeValidation), code, "字符串业务码进日志")
 	details, _ := testutil.KVGet(records[0].KV, "details")
 	assert.Contains(t, details, "email", "Details 进日志留痕")
-}
-
-func TestFaultWithCodeMap(t *testing.T) {
-	testutil.CaptureLog(t)
-	r := testutil.NewTestEngine()
-	r.Use(fault.Fault(fault.WithCodeMap(map[bizerror.Code]int{
-		bizerror.Code("USER_DISABLED"): 1003,
-	})))
-	r.GET("/e", func(c *gin.Context) {
-		_ = c.Error(bizerror.NewError(bizerror.Code("USER_DISABLED"), "禁用"))
-	})
-
-	var b faultBody
-	require.NoError(t, json.Unmarshal(testutil.DoGet(r, "/e").Body.Bytes(), &b))
-	assert.Equal(t, 1003, b.Code, "模块码经 WithCodeMap 映射业务 code")
 }
 
 func TestFaultMultipleErrorsUsesLast(t *testing.T) {

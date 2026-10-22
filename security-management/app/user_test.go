@@ -18,24 +18,23 @@ import (
 	"github.com/fab-viewer/security-management/app"
 	"github.com/fab-viewer/security-management/services"
 	"github.com/fab-viewer/security-management/storage/memory"
-	"github.com/fab-viewer/security-management/usererrors"
 )
 
 // newTestServer 组装内存版服务与路由（i18n 全链路可用）。
 func newTestServer() *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	r := server.NewEngine(usererrors.CodeMap())
+	r := server.NewEngine()
 	api.RegisterRoutes(r, app.NewUserService(memory.NewUserRepo()))
 	return r
 }
 
 // respBody 是统一响应体解码目标。
 type respBody struct {
-	Code     int             `json:"code"`
-	Success  bool            `json:"success"`
-	ErrMsg   string          `json:"errMsg"`
-	Data     json.RawMessage `json:"data"`
-	TxID     string          `json:"txId"`
+	Code    string          `json:"code"`
+	Success bool            `json:"success"`
+	ErrMsg  string          `json:"errMsg"`
+	Data    json.RawMessage `json:"data"`
+	TxID    string          `json:"txId"`
 }
 
 func doJSON(t *testing.T, r http.Handler, method, target, body string, hdr map[string]string) *httptest.ResponseRecorder {
@@ -70,7 +69,7 @@ func TestUserCRUDFlow(t *testing.T) {
 			map[string]string{"Accept-Language": "zh-CN"})
 		require.Equal(t, http.StatusOK, w.Code, "HTTP 恒 200")
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
-		assert.Equal(t, 409, b.Code, "业务码 409 进 body")
+		assert.Equal(t, "UserAlreadyExists", b.Code)
 		assert.Equal(t, "用户名 zhangsan 已存在", b.ErrMsg)
 	})
 
@@ -99,7 +98,7 @@ func TestUserCRUDFlow(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Code, "HTTP 恒 200")
 		var b respBody
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
-		assert.Equal(t, 404, b.Code, "业务码 404 进 body（CodeMap 映射值）")
+		assert.Equal(t, "UserNotFound", b.Code, "bizerror.Code 直接透传")
 		assert.Equal(t, "用户 no-such-id 不存在", b.ErrMsg)
 
 		w = doJSON(t, r, http.MethodGet, "/api/users/no-such-id", "", nil)
@@ -123,7 +122,7 @@ func TestDeleteConfirmation(t *testing.T) {
 			map[string]string{"Accept-Language": "zh-CN"})
 		var b respBody
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
-		assert.Equal(t, 409, b.Code, "业务码 409 进 body")
+		assert.Equal(t, "ConfirmDeleteUser", b.Code)
 		assert.Equal(t, "确认删除用户 王五 吗？", b.ErrMsg, "确认消息必须带被删对象 Name")
 
 		w = doJSON(t, r, http.MethodDelete, "/api/users/"+dto.ID, "", nil)
@@ -139,7 +138,7 @@ func TestDeleteConfirmation(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Code)
 		var b respBody
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
-		assert.Equal(t, 404, b.Code)
+		assert.Equal(t, "UserNotFound", b.Code)
 	})
 }
 

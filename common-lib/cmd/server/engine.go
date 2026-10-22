@@ -9,7 +9,6 @@ import (
 	"github.com/fab-viewer/common-lib/api/middleware/fault"
 	"github.com/fab-viewer/common-lib/api/middleware/guard"
 	"github.com/fab-viewer/common-lib/api/middleware/observer"
-	"github.com/fab-viewer/common-lib/common/bizerror"
 )
 
 type engineConfig struct {
@@ -26,13 +25,10 @@ func WithSkipPaths(paths ...string) EngineOption {
 	}
 }
 
-// NewEngine 组装引擎：按固定顺序挂四中间件（observer → errorhandler →
+// NewEngine 组装引擎：按固定顺序挂四中间件（observer → fault →
 // guard → enrich，顺序契约见 api/middleware 包文档）并内置
-// /healthz 探活（访问日志默认跳过）。
-//
-// codeMap 是业务模块错误码 → 响应体业务 code 的映射（每个业务必传，
-// 无模块码可传 nil 全按默认 0/1）；其他业务差异经 opts 传入。
-func NewEngine(codeMap map[bizerror.Code]int, opts ...EngineOption) *gin.Engine {
+// /healthz 探活（访问日志默认跳过）。业务差异经 opts 传入。
+func NewEngine(opts ...EngineOption) *gin.Engine {
 	cfg := engineConfig{}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -41,7 +37,7 @@ func NewEngine(codeMap map[bizerror.Code]int, opts ...EngineOption) *gin.Engine 
 	r := gin.New()
 	r.Use(
 		observer.Observe(observer.WithSkipPaths(cfg.skipPaths...)),
-		fault.Fault(fault.WithCodeMap(codeMap)),
+		fault.Fault(),
 		guard.Guard(),
 		enrich.Enrich(),
 	)

@@ -41,12 +41,12 @@ func TestFullStack(t *testing.T) {
 		assert.NotEmpty(t, w.Header().Get(enrich.HeaderTxID))
 
 		var b struct {
-			Code    int    `json:"code"`
+			Code    string `json:"code"`
 			Success bool   `json:"success"`
 			TxID    string `json:"txId"`
 		}
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
-		assert.Equal(t, 1, b.Code, "OK 默认业务码 1")
+		assert.Equal(t, "OK", b.Code, "OK 默认业务码 OK")
 		assert.True(t, b.Success)
 		assert.Equal(t, w.Header().Get(enrich.HeaderTxID), b.TxID,
 			"响应体 txId 与响应头一致")
@@ -64,12 +64,12 @@ func TestFullStack(t *testing.T) {
 			"panic 响应仍应带 txId 头")
 
 		var b struct {
-			Code    int    `json:"code"`
+			Code    string `json:"code"`
 			Success bool   `json:"success"`
 			TxID    string `json:"txId"`
 		}
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
-		assert.Equal(t, 0, b.Code, "Recovery 走 Fail 默认业务码 0")
+		assert.Equal(t, "FAIL", b.Code, "Guard 走 Fail 默认业务码 FAIL")
 		assert.False(t, b.Success)
 		assert.NotEmpty(t, b.TxID, "Recovery 写回的统一体含 txId")
 	})

@@ -14,7 +14,6 @@ import (
 	"github.com/fab-viewer/security-management/services"
 	"github.com/fab-viewer/security-management/storage/memory"
 	oraclestorage "github.com/fab-viewer/security-management/storage/oracle"
-	"github.com/fab-viewer/security-management/usererrors"
 	oracleconfig "github.com/fab-viewer/common-lib/storage/oracle/config"
 	"github.com/fab-viewer/common-lib/storage/oracle/conn"
 )
@@ -65,9 +64,10 @@ func provideStorage(log logx.Logger) (st *storage, cleanup func(), err error) {
 func provideUserRepo(st *storage) domain.UserRepository { return st.repo }
 
 // provideRouter 组装引擎与业务路由：四中间件固定顺序与 /healthz 探活由
-// server.NewEngine 承载，模块错误码表是业务唯一必传差异。
+// server.NewEngine 承载；模块错误码（bizerror.Code）由 fault 直接透传到
+// 响应体 code，无需注册映射。
 func provideRouter(users services.UserService) *gin.Engine {
-	r := server.NewEngine(usererrors.CodeMap())
+	r := server.NewEngine()
 	api.RegisterRoutes(r, users)
 	return r
 }

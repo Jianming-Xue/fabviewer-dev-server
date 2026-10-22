@@ -125,7 +125,7 @@ func MustKVString(t *testing.T, kv []any, key string) string {
 
 // RespBody 是统一响应体的测试解码目标（与 response.ApiResponse 字段一一对应）。
 type RespBody struct {
-	Code    int             `json:"code"`
+	Code    string          `json:"code"`
 	Success bool            `json:"success"`
 	ErrMsg  string          `json:"errMsg"`
 	Data    json.RawMessage `json:"data"`

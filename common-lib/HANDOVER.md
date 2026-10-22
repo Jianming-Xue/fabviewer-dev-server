@@ -94,22 +94,23 @@ logx 依赖 config（段读取）；batch/search 依赖各自根包；所有存�
 ### 4.1 统一响应 ApiResponse（五字段恒序列化，成功/失败同构，HTTP 恒 200）
 
 ```json
-{"code":1,"success":true,"errMsg":"","data":{...},"txId":"abc"}
-{"code":0,"success":false,"errMsg":"user 999 not found","data":null,"txId":"abc"}
+{"code":"OK","success":true,"errMsg":"","data":{...},"txId":"abc"}
+{"code":"UserNotFound","success":false,"errMsg":"user 999 not found","data":null,"txId":"abc"}
 ```
 
-- **HTTP 状态码恒 200**（与传输层解耦）；**code 是业务自己的错误码**：
-  OK 默认 1、Fail 默认 0、WithCode 修改；txId 取 RuntimeContext 的 ID
+- **HTTP 状态码恒 200**（与传输层解耦）；**code 是业务错误码字符串、与
+  bizerror.Code 同一命名空间**：OK 默认 "OK"、Fail 默认 "FAIL"、WithCode
+  修改；txId 取 RuntimeContext 的 ID
 - 构建响应**只有 OK/Fail 两个入口**（write 私有；fault/guard 库内
   也走 Fail）：`OK(c, data, opts...)`（errMsg 可选经 WithErrMsg）；
   `Fail(c, errMsg, opts...)`（success 恒 false、errMsg 必填、data 恒 nil）；
   **data 由 handler 指定**（single 或集合，分页 pageable 整体作为 data）
 - VO → DTO 出参转换：time → yyyyMMddHHmmss 字符串（与入参同格式）、
   bool → int 1/0（`response.Wrap` 或 units 原语）
-- 常规业务错误统一走 `c.Error(err)` → fault：模块码经
-  `WithCodeMap` 映射业务 code（未映射 0；库内无默认业务码表，原 errresp
-  包已删除），handler 不自写错误响应；字符串错误码与 Details 不出参，
-  随 `business error` 日志留痕
+- 常规业务错误统一走 `c.Error(err)` → fault：**BizError 的 code 直接
+  透传响应体 code**（非 BizError 为 "FAIL"；WithCodeMap 机制已随字符串
+  统一删除），handler 不自写错误响应；Details 不出参，随 `request fault`
+  失败日志留痕
 
 ### 4.2 分页（2026-10-21 拍板新契约）
 

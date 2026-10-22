@@ -24,7 +24,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"strconv"
 
@@ -110,13 +109,9 @@ func main() {
 	}
 
 	// 引擎装配归 server.NewEngine：四中间件固定顺序 + /healthz 探活；
-	// 模块错误码表是业务唯一必传差异（未映射的自定义码按 500）
-	r := server.NewEngine(map[bizerror.Code]int{
-		usererrors.CodeInvalidUserID:     http.StatusBadRequest,
-		usererrors.CodeUserNotFound:      http.StatusNotFound,
-		usererrors.CodeConfirmDeleteUser: http.StatusConflict,
-		ordererrors.CodeOrderNotFound:    http.StatusNotFound,
-	})
+	// 模块错误码（usererrors/ordererrors 的 bizerror.Code）由 fault 直接
+	// 透传到响应体 code，无需注册映射
+	r := server.NewEngine()
 
 	apiGroup := r.Group("/api")
 	apiGroup.GET("/users", func(c *gin.Context) {
