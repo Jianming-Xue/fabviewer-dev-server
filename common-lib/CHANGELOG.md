@@ -67,7 +67,11 @@
   `ParseDateTime`（`yyyyMMdd` / `yyyyMMddHHmmss` 字符串 → **本地时间**，
   布局常量 `LayoutDate/LayoutDateTime` 导出）、`ParseEpochMillis`
   （13 位毫秒时间戳字符串 → 本地时间）
-- `api/request` 新增：`Wrap[VO](src)`——api 层 DTO → service 层 VO，
+- `api/request` 新增：`Time(name, v)`——时间字符串参数解析（8 位 yyyyMMdd /
+  14 位 yyyyMMddHHmmss / 13 位毫秒按长度识别，空串按可选参数返回零值，
+  非法报 VALIDATION 带参数名）；`Wrap[VO]` 的时间钩子——DTO 时间字符串
+  字段自动解析为 VO 的 time.Time 字段（同格式识别，空串产出零值）；
+  `Wrap[VO](src)`——api 层 DTO → service 层 VO，
   字段名忽略大小写对齐自动拷贝 + WeaklyTypedInput 弱类型转换（int → bool
   经 DecodeHook 按 units.Bool 约定，非 1 一律 false；需要组装裁剪的场景
   业务手写转换）；`Require(name, v)`——必填字符串校验，去首尾空白，

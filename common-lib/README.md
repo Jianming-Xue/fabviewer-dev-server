@@ -303,8 +303,12 @@ check-layers:
 | 日期时间 | 字符串 `20261021100000`（yyyyMMddHHmmss，与 txTime 头同族） | `units.ParseDateTime(s)` → 本地时间 |
 | 毫秒时间戳 | 13 位数字串 `1761012000000` | `units.ParseEpochMillis(s)` → 本地时间 |
 
+- **时间参数解析**：`t, err := request.Time("createdAt", c.Query("createdAt"))`
+  ——8 位日期 / 14 位日期时间 / 13 位毫秒按长度识别；空串按可选参数返回
+  零值；非法格式报 VALIDATION（errMsg 带参数名）
 - **DTO → service VO**：`request.Wrap[VO](dto)`——字段名忽略大小写对齐自动拷贝
-  + 弱类型转换（int → bool 按 units.Bool 约定）；需要组装/裁剪的转换业务手写
+  + 弱类型转换（int → bool 按 units.Bool 约定、时间字符串字段自动解析为
+  time.Time）；需要组装/裁剪的转换业务手写
 - **必填字符串校验**：`name, err := request.Require("username", c.Query("username"))`
   ——去首尾空白，空则 VALIDATION 错误（errMsg 携带参数名，走 ErrorHandler 出 400）
 

@@ -62,8 +62,10 @@ common/units      输入转换原语：Bool（int：1→true 其余含 0→false
                   时间）、ParseEpochMillis（13 位毫秒时间戳）；零三方依赖
 api/reqctx        gin ↔ rctx 绑定：五请求头常量、CtxRuntimeContext key、
                   RuntimeContextOf/TxIDOf/LangOf 取值语法糖、WithActor
-api/request       请求参数：PageQuery、Require（必填校验）、Wrap[VO]
-                  （DTO→service VO：字段名对齐 + 弱类型转换，布尔按 units.Bool）
+api/request       请求参数：PageQuery、Require（必填校验）、Time（时间
+                  字符串→time.Time，8/13/14 位按长度识别）、Wrap[VO]
+                  （DTO→service VO：字段名对齐 + 弱类型转换，布尔按
+                  units.Bool、时间字符串自动解析）
 api/response      统一响应体 ApiResponse（code/success/errMsg/data/txId）：
                   OK/Fail 唯一两个出口（write 私有）+ Option
                   （WithCode/WithErrMsg）+ Wrap[DTO]（VO→DTO：
