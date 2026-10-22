@@ -69,7 +69,7 @@ api/response      统一响应体 ApiResponse（code/success/errMsg/data/txId）
                   （WithCode/WithErrMsg）+ Wrap[DTO]（VO→DTO：
                   time→yyyyMMddHHmmss、bool→int）
 api/middleware    按处理流程点分包（根包仅承载注册顺序契约与全栈测试）：
-                  observer → errorhandler → guard → enrich
+                  observer → fault → guard → enrich
                   （顺序固定；三日志中间件零持有日志对象，经 logx 全局出口）
 cmd/server        组装全家桶：NewEngine（引擎+四中间件+/healthz）、Init
                   （server 段）、NewServer+Run（优雅停机）、ProviderSet（wire）
@@ -100,13 +100,13 @@ logx 依赖 config（段读取）；batch/search 依赖各自根包；所有存�
 
 - **HTTP 状态码恒 200**（与传输层解耦）；**code 是业务自己的错误码**：
   OK 默认 1、Fail 默认 0、WithCode 修改；txId 取 RuntimeContext 的 ID
-- 构建响应**只有 OK/Fail 两个入口**（write 私有；errorhandler/recovery 库内
+- 构建响应**只有 OK/Fail 两个入口**（write 私有；fault/guard 库内
   也走 Fail）：`OK(c, data, opts...)`（errMsg 可选经 WithErrMsg）；
   `Fail(c, errMsg, opts...)`（success 恒 false、errMsg 必填、data 恒 nil）；
   **data 由 handler 指定**（single 或集合，分页 pageable 整体作为 data）
 - VO → DTO 出参转换：time → yyyyMMddHHmmss 字符串（与入参同格式）、
   bool → int 1/0（`response.Wrap` 或 units 原语）
-- 常规业务错误统一走 `c.Error(err)` → ErrorHandler：模块码经
+- 常规业务错误统一走 `c.Error(err)` → fault：模块码经
   `WithCodeMap` 映射业务 code（未映射 0；库内无默认业务码表，原 errresp
   包已删除），handler 不自写错误响应；字符串错误码与 Details 不出参，
   随 `business error` 日志留痕
@@ -257,7 +257,8 @@ make integration  # 集成测试：先 docker compose -f docker-compose.test.yml
 
 ## 8. 约定速记（评审必查）
 
-- handler 出错：`c.Error(err)` + return，不写响应；未知错误根因只进日志
+- handler 出错：`c.Error(err)` + return，不写响应；fault 记失败日志+调用栈，
+errMsg 直取错误消息（BizError 为 Message、其余 err.Error() 原文）出参
 - 业务错误一律 `bizerror.NewError(code, msg模板, args...)` + `InsertArgs`/
   `AttachError` 链；错误编码不出响应体；占位符统一 `{0}` 位置式（禁 fmt 动词）
 - 模块错误语言包：`messages_<语言>.go` + `go generate`（cmd/i18nerr）；

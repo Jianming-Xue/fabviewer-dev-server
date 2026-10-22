@@ -11,7 +11,7 @@ import (
 
 	"github.com/fab-viewer/common-lib/api/internal/testutil"
 	"github.com/fab-viewer/common-lib/api/middleware/enrich"
-	"github.com/fab-viewer/common-lib/api/middleware/errorhandler"
+	"github.com/fab-viewer/common-lib/api/middleware/fault"
 	"github.com/fab-viewer/common-lib/api/middleware/guard"
 	"github.com/fab-viewer/common-lib/api/middleware/observer"
 	"github.com/fab-viewer/common-lib/api/response"
@@ -25,7 +25,7 @@ func TestFullStack(t *testing.T) {
 	r := testutil.NewTestEngine()
 	r.Use(
 		observer.Observe(),
-		errorhandler.ErrorHandler(),
+		fault.Fault(),
 		guard.Guard(),
 		enrich.Enrich(),
 	)
@@ -80,7 +80,7 @@ func TestFullStack(t *testing.T) {
 	accessCount := 0
 	statusByPath := map[string]int{}
 	for _, rec := range records {
-		if rec.Msg == "panic recovered" || rec.Msg == "business error" {
+		if rec.Msg == "panic recovered" || rec.Msg == "request fault" {
 			continue
 		}
 		require.Equal(t, "access", rec.Msg)

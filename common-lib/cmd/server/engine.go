@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/fab-viewer/common-lib/api/middleware/enrich"
-	"github.com/fab-viewer/common-lib/api/middleware/errorhandler"
+	"github.com/fab-viewer/common-lib/api/middleware/fault"
 	"github.com/fab-viewer/common-lib/api/middleware/guard"
 	"github.com/fab-viewer/common-lib/api/middleware/observer"
 	"github.com/fab-viewer/common-lib/common/bizerror"
@@ -14,7 +14,6 @@ import (
 
 type engineConfig struct {
 	skipPaths []string
-	messageFn func(*gin.Context, *bizerror.BizError) string
 }
 
 // EngineOption 配置 NewEngine（业务级差异的逃生舱口）。
@@ -24,14 +23,6 @@ type EngineOption func(*engineConfig)
 func WithSkipPaths(paths ...string) EngineOption {
 	return func(cfg *engineConfig) {
 		cfg.skipPaths = append(cfg.skipPaths, paths...)
-	}
-}
-
-// WithMessageFunc 改写错误响应 errMsg（透传 errorhandler.WithMessageFunc，
-// 如统一脱敏）。
-func WithMessageFunc(fn func(*gin.Context, *bizerror.BizError) string) EngineOption {
-	return func(cfg *engineConfig) {
-		cfg.messageFn = fn
 	}
 }
 
@@ -47,15 +38,10 @@ func NewEngine(codeMap map[bizerror.Code]int, opts ...EngineOption) *gin.Engine 
 		opt(&cfg)
 	}
 
-	ehOpts := []errorhandler.HandlerOption{errorhandler.WithCodeMap(codeMap)}
-	if cfg.messageFn != nil {
-		ehOpts = append(ehOpts, errorhandler.WithMessageFunc(cfg.messageFn))
-	}
-
 	r := gin.New()
 	r.Use(
 		observer.Observe(observer.WithSkipPaths(cfg.skipPaths...)),
-		errorhandler.ErrorHandler(ehOpts...),
+		fault.Fault(fault.WithCodeMap(codeMap)),
 		guard.Guard(),
 		enrich.Enrich(),
 	)

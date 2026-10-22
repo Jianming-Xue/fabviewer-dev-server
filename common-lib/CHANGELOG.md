@@ -6,6 +6,24 @@
 
 ## [Unreleased]
 
+### Changed（Breaking：errorhandler 更名 fault 并简化职责）
+
+- `api/middleware/errorhandler` → **`api/middleware/fault`**，
+  `ErrorHandler()` → `Fault()`（统一错误出口）
+- 职责简化为：采集 handler 链经 c.Error 上报的错误（不区分 BizError）→
+  **记失败日志与调用栈**（bizCode/details 留痕）→ 经 `response.Fail` 写回。
+  **errMsg 直取错误消息、出口零翻译**：BizError 取 Message，其余取
+  err.Error() 原文直出响应体（原「未知错误根因不进响应」的脱敏行为废除，
+  业务方拍板取舍）
+- **删除哨兵翻译**：gorm.ErrRecordNotFound/sql.ErrNoRows → "resource not
+  found"、context.Canceled → "client canceled request"、其余 → "internal
+  error" 的固定文案替换全部移除
+- **删除 WithMessageFunc**（errMsg 出口改写与直取语义矛盾）及
+  server.NewEngine 的 WithMessageFunc 透传；**WithCodeMap 保留**（code
+  语义不变）
+- 注册顺序契约表述：observer.Observe() → fault.Fault() → guard.Guard()
+  → enrich.Enrich()
+
 ### Changed（Breaking：四中间件按业务方拍板更名）
 
 - `accesslog` → **`observer`**：`AccessLog()` → `Observe()`（访问观察者，

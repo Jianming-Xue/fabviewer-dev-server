@@ -29,7 +29,7 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 | `common/logx`（日志完整工具：Init + 包级函数，见下节） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/i18n`（多语言表能力，仅依赖标准库与 `common/rctx`） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/units`（输入转换原语：int 布尔、日期/毫秒时间戳解析，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `api/request`（请求参数解析/校验/时间解析/DTO 包装）、`api/response`（统一响应体 ApiResponse 与 VO→DTO 转换）、`api/middleware/*`（observer / errorhandler / guard / enrich 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
+| `api/request`（请求参数解析/校验/时间解析/DTO 包装）、`api/response`（统一响应体 ApiResponse 与 VO→DTO 转换）、`api/middleware/*`（observer / fault / guard / enrich 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `cmd/server`（组装全家桶：NewEngine 引擎装配 / Init 读 server 段 / NewServer+Run 优雅停机 / wire ProviderSet） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/clickhouse`（`config`/`batch` 子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
 
@@ -122,7 +122,7 @@ res, err := opensearch.Search[model.User](ctx, cli, "users", q)
 |---|---|
 | 分层结构 | 去掉接口访问层与 DTO；保留 service / application / storage / 对象层；main 兼任调度入口（组装根豁免仍适用） |
 | 对象流转 | 简化为 **VO ↔ PO**（DTO→VO 一步消失，任务参数直接是业务参数） |
-| 错误处理 | 没有 ErrorHandler 中间件兜底——任务循环内自行处理：`logx.Error` 记录（bizerror 包装自带操作上下文），并按 `bizerror.Code` 决定重试/跳过/告警（如 CodeDB 重试、CodeValidation 告警并跳过） |
+| 错误处理 | 没有 fault 中间件兜底——任务循环内自行处理：`logx.Error` 记录（bizerror 包装自带操作上下文），并按 `bizerror.Code` 决定重试/跳过/告警（如 CodeDB 重试、CodeValidation 告警并跳过） |
 | 日志 | 装配时 `logx.Init(cfgMap)`；每个任务用 `logx.Default().With("job", "xxx_settle")` 派生，日志自动带任务标识 |
 | 分页 | 批处理通常不翻页；ClickHouse `Batch[T]` 是定时任务主力写入器 |
 | 事务 | 结算/对账类任务用 `GORM().Transaction` + `conn.CallProcTx`（conn.FromGorm 取事务连接），已有完整约定 |
@@ -154,7 +154,7 @@ r.GET("/api/users", func(c *gin.Context) {
     q := request.PageQuery(c) // 解析 ?pageIndex=&pageSize=，非法值回退默认
     res, err := userRepo.List(c.Request.Context(), q) // 返回 paging.Pageable[User]
     if err != nil {
-        _ = c.Error(err) // 交给 ErrorHandler 统一写回，不要自行写错误响应
+        _ = c.Error(err) // 交给 fault 统一写回，不要自行写错误响应
         return
     }
     response.OKPage(c, res)
@@ -166,8 +166,8 @@ err = server.Run(srv)             // 阻塞运行，SIGINT/SIGTERM 后返回；c
 ```
 
 手工挂中间件（不经 NewEngine）时注册顺序固定 `observer.Observe() →
-errorhandler.ErrorHandler(opts...) → guard.Guard() →
-enrich.Enrich()`（AccessLog 必须在 ErrorHandler 外层，
+fault.Fault(opts...) → guard.Guard() →
+enrich.Enrich()`（Observe 必须在 fault 外层，
 否则错误路径记录的 status 不正确；中间件零持有日志对象，经 logx 全局出口记录）。
 wire 装配见 `cmd/server` 包文档与 security-management 的 cmd/server。
 
@@ -273,8 +273,9 @@ check-layers:
   `response.Fail(c, errMsg, opts...)`——code 默认 0（可 `WithCode` 换成
   业务自己的错误码）、success 恒 false、**data 恒 nil**、errMsg 必填
   （空串兜底 "internal error"）。常规业务错误走 `c.Error(err)` 交
-  errorhandler 统一处理：模块错误码经 `errorhandler.WithCodeMap` 映射成
-  业务 code 进响应体（未映射 0），errMsg 直出 Message
+  fault 统一处理：模块错误码经 `fault.WithCodeMap` 映射成
+  业务 code 进响应体（未映射 0），errMsg 直取错误消息（BizError 为
+  Message，其余为 err.Error() 原文），出口零翻译
 - 分页请求参数为 `pageIndex`/`pageSize`（`request.PageQuery` 解析为
   `paging.PageRequest`；非法回退默认值 **1/10**，pageSize 上限
   `MaxPageSize=100`）；分页出参 **pageable**（`paging.Pageable`：
@@ -282,7 +283,7 @@ check-layers:
   totalPage 为 totalSize/pageSize 向上取整（不整除进一、整除不加，
   totalSize=0 为 0）。
 - 字符串业务错误码（`bizerror.Code`）与明细（`Details`）不出参：错误码只用于内部映射
-  与日志，明细随 `business error` 日志留痕（`ErrorHandler`）。
+  与日志，明细随 `request fault` 失败日志留痕（`fault`）。
 
 ### 出参转换（VO → DTO，common/units + response.Wrap）
 
@@ -310,7 +311,7 @@ check-layers:
   + 弱类型转换（int → bool 按 units.Bool 约定、时间字符串字段自动解析为
   time.Time）；需要组装/裁剪的转换业务手写
 - **必填字符串校验**：`name, err := request.Require("username", c.Query("username"))`
-  ——去首尾空白，空则 VALIDATION 错误（errMsg 携带参数名，走 ErrorHandler 出 400）
+  ——去首尾空白，空则 VALIDATION 错误（errMsg 携带参数名，走 fault 出 200 + code 0）
 
 ### 请求运行时上下文（common/rctx.RuntimeContext）
 
@@ -427,10 +428,10 @@ return usererrors.NewUserNotFound(ctx).
 _ = c.Error(usererrors.NewConfirmDeleteUser(ctx).InsertArgs(u.Name))
 // → zh："确认删除用户 zhangsan 吗？"  en："confirm deleting user zhangsan?"
 
-// 4. 出口（ErrorHandler）直出 Message；模块码经 WithCodeMap 映射业务 code
+// 4. 出口（fault）errMsg 直取错误消息；模块码经 WithCodeMap 映射业务 code
 //    （HTTP 恒 200，映射值进响应体 code）
-r.Use(errorhandler.ErrorHandler(
-    errorhandler.WithCodeMap(map[bizerror.Code]int{
+r.Use(fault.Fault(
+    fault.WithCodeMap(map[bizerror.Code]int{
         usererrors.CodeUserNotFound: 1001,
     }), ...)
 ```
@@ -445,9 +446,11 @@ r.Use(errorhandler.ErrorHandler(
   模块默认语言 → key 原文
 - 多模块各自字典互不感知（无全局注册、无跨模块 key 冲突）；表并发安全
 
-业务错误码 → 响应体业务 code 的映射**完全由业务提供**（`errorhandler.
-WithCodeMap`，如 `{usererrors.CodeUserNotFound: 1001}`；未映射的码含内置码
-一律按 0；HTTP 状态码恒 200，库内不设默认业务码表）。
+业务错误码 → 响应体业务 code 的映射**完全由业务提供**（`fault.WithCodeMap`，
+如 `{usererrors.CodeUserNotFound: 1001}`；未映射的码含内置码一律按 0；HTTP
+状态码恒 200，库内不设默认业务码表）。fault 出口不做翻译或固定文案替换
+（BizError errMsg 取 Message，其余取 err.Error() 原文——未知错误根因直出
+响应体，业务方拍板取舍；失败日志带调用栈留痕）。
 | CONFLICT | 409 |
 | RATE_LIMITED | 429 |
 | INTERNAL_ERROR / DB_ERROR | 500 |
@@ -455,8 +458,8 @@ WithCodeMap`，如 `{usererrors.CodeUserNotFound: 1001}`；未映射的码含内
 
 - 模块码（如 `usererrors.CodeUserNotFound`）经 `WithCodeMap` 映射成业务 code；
   未映射的自定义码按 500 处理。
-- 未知错误的根因只进日志不进响应（`ErrorHandler` 统一兜底）。
-- `gorm.ErrRecordNotFound` / `sql.ErrNoRows` 在 `ErrorHandler` 中内置翻译为 404。
+- 未知错误的 errMsg 为 err.Error() 原文直出响应体（根因随 `request fault` 日志带调用栈留痕）。
+- `gorm.ErrRecordNotFound` / `sql.ErrNoRows` 不做内置翻译（errMsg 直出原文）。
 
 ## 各存储包部署前提与用法
 

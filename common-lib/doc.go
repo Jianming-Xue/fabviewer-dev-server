@@ -6,7 +6,7 @@
 //
 //	接口访问层  → api 按功能分包：request（请求参数解析/校验/时间/包装）、
 //	              response（ApiResponse 统一响应 OK/Fail/VO→DTO）、
-//	              api/middleware 按处理流程点分包（observer/errorhandler/
+//	              api/middleware 按处理流程点分包（observer/fault/
 //	              guard/enrich）——仅此层可 import，Gin 依赖从这里开始
 //	存储层      → storage/oracle、storage/clickhouse、storage/opensearch、
 //	              storage/snowflake（ID 生成）、storage 根（PoolConfig）
@@ -21,7 +21,7 @@
 //
 // REST 接口层示例：
 //
-//	r.Use(observer.Observe(), errorhandler.ErrorHandler(),
+//	r.Use(observer.Observe(), fault.Fault(),
 //	      guard.Guard(), enrich.Enrich())
 //	q := request.PageQuery(c)
 //	response.OK(c, res)

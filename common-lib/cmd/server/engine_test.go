@@ -51,11 +51,11 @@ func TestNewEngine(t *testing.T) {
 		assert.Equal(t, "账号已禁用", b.ErrMsg)
 	})
 
-	t.Run("未知错误兜底 code 0 统一体", func(t *testing.T) {
+	t.Run("未知错误兜底 code 0 且 errMsg 直出原文", func(t *testing.T) {
 		w := doGet(r, "/unknown")
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), `"code":0`)
-		assert.NotContains(t, w.Body.String(), "assert.AnError", "根因不进响应")
+		assert.Contains(t, w.Body.String(), assert.AnError.Error(), "新契约：err 原文直出响应体")
 	})
 
 	t.Run("panic 兜底 code 0 且响应头带 txId", func(t *testing.T) {
@@ -76,21 +76,6 @@ func TestNewEngineNilCodeMap(t *testing.T) {
 	w := doGet(r, "/e")
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), `"code":0`, "nil 码表按 Fail 默认 0")
-}
-
-func TestNewEngineWithMessageFunc(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := server.NewEngine(nil, server.WithMessageFunc(
-		func(_ *gin.Context, _ *bizerror.BizError) string { return "overridden" }))
-	r.GET("/e", func(c *gin.Context) {
-		_ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "raw"))
-	})
-
-	var b struct {
-		ErrMsg string `json:"errMsg"`
-	}
-	require.NoError(t, json.Unmarshal(doGet(r, "/e").Body.Bytes(), &b))
-	assert.Equal(t, "overridden", b.ErrMsg)
 }
 
 func TestNewEngineWithSkipPaths(t *testing.T) {
