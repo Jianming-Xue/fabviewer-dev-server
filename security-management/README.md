@@ -15,11 +15,11 @@ security-management/
 ├── storage/
 │   ├── oracle/      Oracle 实现：PO 映射、GORM 查询、事务（生产）
 │   └── memory/      内存实现：开发自举与测试（无库启动全链路）
-└── usererrors/      用户模块错误语言包（i18nerr 生成构造函数）
+└── usercodes/       用户模块码包（i18nerr 生成码常量 + NewError/NewMessage）
 ```
 
 依赖方向（箭头指向被依赖方）：`api → services ← app → domain ← storage`，
-`app/storage → usererrors/common-lib`。domain 不依赖任何技术设施。
+`app/storage → usercodes/common-lib`。domain 不依赖任何技术设施。
 
 ## 快速开始
 

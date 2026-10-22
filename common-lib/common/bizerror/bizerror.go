@@ -66,8 +66,8 @@ func (e *BizError) Is(target error) bool {
 //
 //	基础设施层直构：bizerror.NewError(bizerror.CodeDB, "query orders id={0}", id)
 //	    .AttachError(err, nil)
-//	业务层查表翻译（经生成器产出的模块构造函数，如 usererrors.NewUserNotFound）：
-//	    bizerror.NewError(code, 模块字典.T(ctx, string(code)))  → 详见 cmd/i18nerr
+//	业务层查表翻译（经生成器产出的模块入口，如 usercodes.NewError）：
+//	    usercodes.NewError(ctx, usercodes.UserNotFound)  → 详见 cmd/i18nerr
 func NewError(code Code, message string, args ...any) *BizError {
 	e := &BizError{Code: code, Message: message}
 	if len(args) > 0 {

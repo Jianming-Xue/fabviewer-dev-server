@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 
-	"github.com/fab-viewer/common-lib/common/commonerrors"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/common/units"
 )
 
@@ -69,12 +69,12 @@ func Wrap[VO any](src any) (VO, error) {
 }
 
 // Require 校验必填字符串参数：去首尾空白后为空串时返回公共错误
-// ParameterRequired（commonerrors 字典按请求语言翻译，errMsg 携带参数名），
+// ParameterRequired（commoncodes 字典按请求语言翻译，errMsg 携带参数名），
 // 否则返回去空白后的值。
 func Require(ctx context.Context, name, v string) (string, error) {
 	v = strings.TrimSpace(v)
 	if v == "" {
-		return "", commonerrors.NewParameterRequired(ctx).InsertArgs(name)
+		return "", commoncodes.NewError(ctx, commoncodes.ParameterRequired).InsertArgs(name)
 	}
 	return v, nil
 }

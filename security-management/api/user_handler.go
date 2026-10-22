@@ -6,7 +6,7 @@ import (
 	"github.com/fab-viewer/common-lib/api/request"
 	"github.com/fab-viewer/common-lib/api/response"
 	"github.com/fab-viewer/security-management/services"
-	"github.com/fab-viewer/security-management/usererrors"
+	"github.com/fab-viewer/security-management/usercodes"
 )
 
 // userHandler 用户模块 handler：入参校验、调 services、错误经 c.Error
@@ -19,7 +19,7 @@ type userHandler struct {
 func (h *userHandler) create(c *gin.Context) {
 	var cmd services.CreateUserCmd
 	if err := c.ShouldBindJSON(&cmd); err != nil {
-		_ = c.Error(usererrors.NewInvalidUserID(c.Request.Context()).
+		_ = c.Error(usercodes.NewError(c.Request.Context(), usercodes.InvalidUserID).
 			AttachError(err, nil))
 		return
 	}
@@ -54,7 +54,7 @@ func (h *userHandler) get(c *gin.Context) {
 // delete DELETE /api/users/:id?confirm=true
 func (h *userHandler) delete(c *gin.Context) {
 	if c.Param("id") == "" {
-		_ = c.Error(usererrors.NewInvalidUserID(c.Request.Context()))
+		_ = c.Error(usercodes.NewError(c.Request.Context(), usercodes.InvalidUserID))
 		return
 	}
 	if err := h.users.Delete(c.Request.Context(), c.Param("id"),

@@ -1,29 +1,32 @@
-// Command i18nerr 从多语言消息 Go 文件生成模块错误字典与构造函数，使
-// 「文件里的 key」与「代码里的入口」一一对应、永不漂移：
+// Command i18nerr 从多语言消息 Go 文件生成模块码集合与翻译入口，使
+// 「文件里的 key」与「代码里的码」一一对应、永不漂移：
 //
-//	cd usererrors && go run github.com/fab-viewer/common-lib/cmd/i18nerr \
-//	    -dir . -pkg usererrors -default en
+//	cd usercodes && go run github.com/fab-viewer/common-lib/cmd/i18nerr \
+//	    -dir . -pkg usercodes -default en
 //
 // 输入约定（目录下的 messages_<语言>.go，如 messages_en.go / messages_zh.go，
-// 文件名即语言）：
+// 文件名即语言；包名约定 xxxcodes——包名即模块码命名空间，引用形如
+// usercodes.UserNotFound）：
 //
-//	package usererrors
+//	package usercodes
 //
 //	var MessagesEn = map[string]string{
-//		"UserNotFound": "user {0} not found", // key 即错误 code，value 为
+//		"UserNotFound": "user {0} not found", // key 即码，value 为
 //	}                                        // 文案模板，{0} {1} 为位置占位符
 //
 // 每文件恰好一个导出的 map[string]string 变量（复合字面量、键值均为字符串
-// 字面量）。输出 errors_gen.go 四部分（key 要求形如导出标识符）：
+// 字面量）。输出 messages_gen.go 四部分（key 要求形如导出标识符）：
 //
-//   - Code 常量（即响应体业务 code，fault 直接透传）
-//   - ErrorCode：本模块多语言字典句柄（bizerror.New(ctx, usererrors.ErrorCode,
-//     code) 据此按请求语言查模板）
-//   - New(ctx, code)：构造函数底层实现
-//   - 每 key 一个便捷构造函数（推荐入口）：usererrors.NewUserNotFound(ctx)
+//   - 码常量：名字与值均即 key 原文（fault 直接透传为响应体业务 code）
+//   - 私有 dict 与 init：本模块多语言字典（语言包编译期注册）
+//   - NewError(ctx, code, args...)：BizError 构造入口（getMessage 按请求
+//     语言翻译 Message）
+//   - NewMessage(ctx, code, args...)：纯文案 string 出口（不限于错误，
+//     args 可选非强制；也可不带参取模板，经 i18n.InsertArgs 在调用点
+//     自行替换）
 //
-// 各语言文件按同 key 对齐、占位符位置可不同（{n} 始终对应第 n 个
-// InsertArgs 参数）；Message 出口直出，出口不做翻译。
+// 各语言文件按同 key 对齐、占位符位置可不同（{n} 始终对应第 n 个参数）；
+// Message 出口直出，出口不做翻译。
 package main
 
 import (
@@ -64,7 +67,7 @@ func main() {
 	dir := flag.String("dir", ".", "消息文件所在目录（messages_<语言>.go）")
 	pkg := flag.String("pkg", "", "生成文件所属包名（必填）")
 	def := flag.String("default", "", "默认语言（必填，如 en；该语言文案成为错误变量的兜底消息）")
-	out := flag.String("out", "errors_gen.go", "生成文件名（相对 -dir）")
+	out := flag.String("out", "messages_gen.go", "生成文件名（相对 -dir）")
 	flag.Parse()
 	if err := run(*dir, *pkg, *def, *out); err != nil {
 		fmt.Fprintln(os.Stderr, "i18nerr:", err)
@@ -77,7 +80,7 @@ func run(dir, pkg, def, out string) error {
 	if pkg == "" || def == "" {
 		return fmt.Errorf("-pkg/-default 均为必填")
 	}
-	files, err := loadMsgFiles(dir)
+	files, err := loadMsgFiles(dir, filepath.Base(out))
 	if err != nil {
 		return err
 	}
@@ -103,20 +106,21 @@ func run(dir, pkg, def, out string) error {
 	return nil
 }
 
-// loadMsgFiles 扫描目录下全部 messages_<语言>.go 并解析。
-func loadMsgFiles(dir string) (map[i18n.Language]msgFile, error) {
+// loadMsgFiles 扫描目录下全部 messages_<语言>.go 并解析（out 为生成文件名，
+// 与输入模式 messages_(.+).go 同形，显式跳过防止把产物当语言包解析）。
+func loadMsgFiles(dir, out string) (map[i18n.Language]msgFile, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("读取目录 %s 失败: %w", dir, err)
 	}
 	files := make(map[i18n.Language]msgFile)
 	for _, e := range entries {
-		if e.IsDir() {
+		if e.IsDir() || e.Name() == out {
 			continue
 		}
 		m := filePattern.FindStringSubmatch(e.Name())
 		if m == nil {
-			continue // doc.go、errors_gen.go 等非消息文件忽略
+			continue // doc.go、messages_gen.go 等非消息文件忽略
 		}
 		if !langPattern.MatchString(m[1]) {
 			return nil, fmt.Errorf("%s: 文件名语言段 %q 非法", e.Name(), m[1])
@@ -272,7 +276,7 @@ func invalidKeys(msgs map[string]string) []string {
 	return bad
 }
 
-// generate 拼装 errors_gen.go 源码（key 与语言均升序，输出确定）。
+// generate 拼装 messages_gen.go 源码（key 与语言均升序，输出确定）。
 func generate(pkg string, defLang i18n.Language, files map[i18n.Language]msgFile) string {
 	def := files[defLang]
 	keys := make([]string, 0, len(def.msgs))
@@ -294,31 +298,36 @@ func generate(pkg string, defLang i18n.Language, files map[i18n.Language]msgFile
 	sb.WriteString("\t\"github.com/fab-viewer/common-lib/common/bizerror\"\n")
 	sb.WriteString("\t\"github.com/fab-viewer/common-lib/common/i18n\"\n")
 	sb.WriteString(")\n\n")
-	sb.WriteString("// Code 常量即错误文件中的 key，作为响应体业务 code 由 fault 直接透传。\n")
+	sb.WriteString("// 码常量：名字与 messages_<语言>.go 中的 key 完全一致，值即 key\n")
+	sb.WriteString("// 原文（fault 直接透传为响应体业务 code）。本包即模块码命名空间，\n")
+	fmt.Fprintf(&sb, "// 引用形如 %s.UserNotFound。\n", pkg)
 	sb.WriteString("const (\n")
 	for _, k := range keys {
-		fmt.Fprintf(&sb, "\tCode%s = bizerror.Code(%q)\n", k, k)
+		fmt.Fprintf(&sb, "\t%s bizerror.Code = %q\n", k, k)
 	}
 	sb.WriteString(")\n\n")
-	fmt.Fprintf(&sb, "// ErrorCode 是本模块多语言错误字典的句柄：bizerror.New(ctx,\n// %s.ErrorCode, code) 据此在本模块的 messages_<语言>.go 中\n", pkg)
-	sb.WriteString("// 按请求语言查出 Message 模板。\n")
-	sb.WriteString("var ErrorCode = newDictionary()\n\n")
-	sb.WriteString("func newDictionary() *i18n.Bundles {\n")
-	fmt.Fprintf(&sb, "\tb := i18n.NewBundles(i18n.Language(%q))\n", defLang)
+	sb.WriteString("// dict 本模块多语言字典（私有，语言包编译期注册）。\n")
+	fmt.Fprintf(&sb, "var dict = i18n.NewBundles(i18n.Language(%q))\n\n", defLang)
+	sb.WriteString("func init() {\n")
 	for _, l := range langs {
-		fmt.Fprintf(&sb, "\tb.Register(i18n.Language(%q), %s)\n", l, files[l].varName)
+		fmt.Fprintf(&sb, "\tdict.Register(i18n.Language(%q), %s)\n", l, files[l].varName)
 	}
-	sb.WriteString("\treturn b\n")
 	sb.WriteString("}\n\n")
-	sb.WriteString("// New 按本模块字典创建 BizError（便捷构造函数的底层实现）：先按请求\n")
-	sb.WriteString("// 语言从字典查 Message 模板，再交给 bizerror.NewError；模板含占位符\n")
-	sb.WriteString("// {0} {1} ... 时链式调用 InsertArgs 按序替换。\n")
-	sb.WriteString("func New(ctx context.Context, code bizerror.Code) *bizerror.BizError {\n")
-	sb.WriteString("\treturn bizerror.NewError(code, ErrorCode.T(ctx, string(code)))\n")
+	sb.WriteString("// getMessage 按请求语言查出翻译后的 message：回退链为请求语言 →\n")
+	sb.WriteString("// 基础语言 → 模块默认语言 → key 原文。\n")
+	sb.WriteString("func getMessage(ctx context.Context, code bizerror.Code) string {\n")
+	sb.WriteString("\treturn dict.T(ctx, string(code))\n")
 	sb.WriteString("}\n\n")
-	sb.WriteString("// 便捷构造函数（推荐入口，每 key 一个）。\n")
-	for _, k := range keys {
-		fmt.Fprintf(&sb, "func New%s(ctx context.Context) *bizerror.BizError { return New(ctx, Code%s) }\n", k, k)
-	}
+	sb.WriteString("// NewError 产出 BizError：Message 经 getMessage 按请求语言翻译，\n")
+	sb.WriteString("// args 可选（按序替换模板中的 {0} {1} ...，与链式 InsertArgs 等价）。\n")
+	sb.WriteString("func NewError(ctx context.Context, code bizerror.Code, args ...any) *bizerror.BizError {\n")
+	sb.WriteString("\treturn bizerror.NewError(code, getMessage(ctx, code), args...)\n")
+	sb.WriteString("}\n\n")
+	sb.WriteString("// NewMessage 产出纯文案 string（不限于错误）：同样按请求语言翻译，\n")
+	sb.WriteString("// args 可选非强制；也可不带参取模板，经 i18n.InsertArgs 在调用点\n")
+	sb.WriteString("// 自行替换。\n")
+	sb.WriteString("func NewMessage(ctx context.Context, code bizerror.Code, args ...any) string {\n")
+	sb.WriteString("\treturn i18n.InsertArgs(getMessage(ctx, code), args...)\n")
+	sb.WriteString("}\n")
 	return sb.String()
 }

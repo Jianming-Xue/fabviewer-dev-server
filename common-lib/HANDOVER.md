@@ -55,12 +55,12 @@ common/logx       日志完整工具：Init(m) 唯一初始化（配置结构私
                   双出口（lumberjack 滚动），caller 指向业务调用行
 common/rctx       RuntimeContext（五字段私有，WithXxx 链式赋值/FromXxx 取值；
                   User 即审计操作者——原 actortx 包已并入删除）
-common/i18n       Bundles 模块多语言表 + Accept-Language 解析（只提供能力，
-                  业务译文每模块自维护；仅依赖 rctx）
-common/commonerrors 公共错误字典（中英文，默认英文；key 即响应体业务
-                  code，fault 直接透传）：ParameterRequired/InvalidParameter/
+common/i18n       Bundles 模块多语言字典 + Accept-Language 解析 + InsertArgs
+                  模板插参（只提供能力，业务译文每模块自维护；仅依赖 rctx）
+common/commoncodes 公共码字典（中英文，默认英文；key 即响应体业务 code，
+                  fault 直接透传）：ParameterRequired/InvalidParameter/
                   InvalidTime/InternalError；request 校验路径与业务服务可直接
-                  引用组织错误；i18nerr 同款模式生成
+                  引用组织错误或文案；i18nerr 同款模式生成
 common/units      输入转换原语：Bool（int：1→true 其余含 0→false）、
                   ParseDate/ParseDateTime（yyyyMMdd / yyyyMMddHHmmss → 本地
                   时间）、ParseEpochMillis（13 位毫秒时间戳）；零三方依赖
@@ -87,7 +87,8 @@ storage/clickhouse(+config/batch)   Open/Client/QuerySlice；Batch[T] 批量写
 storage/opensearch(+config/search)  Open/Client/Index/Get/Delete；Search[T]（logsink 已删）
 storage/snowflake  点分隔雪花 ID（"<Unix毫秒>.<节点>.<序列>"；WIP，见 STATUS）
 storage/pool.go    PoolConfig 连接池配置
-cmd/i18nerr        模块错误字典生成器（messages_<语言>.go → errors_gen.go）
+cmd/i18nerr        模块码包生成器（messages_<语言>.go → messages_gen.go：
+                  码常量 + NewError/NewMessage 两入口）
 examples/          apifull（含 i18n 完整示例）/ oracleproc / chbatch / ossearch
 ```
 
@@ -153,15 +154,19 @@ WithID(id).WithName("job"))`。
 
 `common/i18n` 只提供能力、译文由业务服务自注册；errMsg 按请求语言翻译：
 
-- 接入（每模块自己的多语言表，编译期进包、无全局注册）：模块内
-  `messages_<语言>.go`（key 即 code，{0} {1} 位置占位符）→
-  `cmd/i18nerr -dir . -pkg xxx -default en` 生成 `errors_gen.go`（Code 常量、
-  ErrorCode 字典句柄、构造函数）→ 调用处 `xxx.NewUserNotFound(ctx).
-  InsertArgs(id).AttachError(root, details)`——构造函数内部按请求语言查模板后交给
-  `bizerror.NewError`；出口直出 Message 不翻译
-- 回退链：请求语言 → 基础语言（只收窄不放宽）→ 默认语言 → key 原文
-- 删除确认等带实体名的消息：模板 `{0}` + `InsertArgs(name)`；模块码经
-  `WithCodeMap` 映射业务 code
+- 接入（每模块自己的多语言字典，编译期进包、无全局注册表）：模块码包
+  （包名 `xxxcodes`，包名即码命名空间）内 `messages_<语言>.go`（key 即码，
+  {0} {1} 位置占位符）→ `cmd/i18nerr -dir . -pkg xxxcodes -default en` 生成
+  `messages_gen.go`（码常量 + 私有 dict/getMessage + 仅两个入口）→ 调用处
+  `usercodes.NewError(ctx, usercodes.UserNotFound, id).AttachError(root,
+  details)`——内部按请求语言查模板后交给 `bizerror.NewError`；出口直出
+  Message 不翻译
+- 纯文案出口：`NewMessage(ctx, code, args...)` 出 string（不限于错误，可
+  塞进正常业务响应 data）；不带参取模板后经 `i18n.InsertArgs` 调用点自换
+- 回退链：请求语言 → 基础语言（只收窄不放宽）→ 模块默认语言 → key 原文；
+  同 key 跨模块互不冲突（各持字典）
+- 删除确认等带实体名的消息：模板 `{0}` + 构造 args 或链式 `InsertArgs(name)`
+  （两者等价）
 
 ### 4.5 日志（logx，2026-10-21 拍板重构）
 
@@ -268,8 +273,9 @@ make integration  # 集成测试：先 docker compose -f docker-compose.test.yml
 errMsg 直取错误消息（BizError 为 Message、其余 err.Error() 原文）出参
 - 业务错误一律 `bizerror.NewError(code, msg模板, args...)` + `InsertArgs`/
   `AttachError` 链；错误编码不出响应体；占位符统一 `{0}` 位置式（禁 fmt 动词）
-- 模块错误语言包：`messages_<语言>.go` + `go generate`（cmd/i18nerr）；
-  新增错误 = 改语言文件 + 重跑 generate + 用生成的构造函数
+- 模块码包（`xxxcodes`）：`messages_<语言>.go` + `go generate`
+  （cmd/i18nerr）；新增码 = 改语言文件 + 重跑 generate + 用 NewError/
+  NewMessage（无每 key 函数）
 - 日志一律 `logx.Info/Warn/Error/Debug` 包级函数，禁止业务自建日志对象；
   携带固定字段用 `logx.Default().With(...)`
 - 配置只写 application.yml（+环境变量覆盖），不写代码里；新增组件配置 =

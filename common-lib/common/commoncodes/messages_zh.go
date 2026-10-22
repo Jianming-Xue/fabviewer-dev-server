@@ -1,6 +1,6 @@
-package commonerrors
+package commoncodes
 
-// MessagesZh 是 common-lib 公共错误的中文文案，key 与 MessagesEn 对齐
+// MessagesZh 是 common-lib 公共码的中文文案，key 与 MessagesEn 对齐
 // （缺 key 回退默认语言英文）；{0} 在句中位置可与英文不同。
 var MessagesZh = map[string]string{
 	"ParameterRequired": "参数 {0} 必填",

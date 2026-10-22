@@ -18,7 +18,7 @@
 //     }
 //
 //     func provideRouter(users services.UserService) *gin.Engine {
-//     r := server.NewEngine(usererrors.CodeMap())
+//     r := server.NewEngine()
 //     api.RegisterRoutes(r, users)
 //     return r
 //     }

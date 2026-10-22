@@ -27,7 +27,7 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 | `common/bizerror` / `common/paging` / `common/rctx`（跨层，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/config`（配置加载：application.yml + 环境变量覆盖 + 段绑定） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/logx`（日志完整工具：Init + 包级函数，见下节） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `common/i18n`（多语言表能力，仅依赖标准库与 `common/rctx`）、`common/commonerrors`（公共错误字典：中英文、默认英文，key 即响应体业务 code） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `common/i18n`（多语言表能力，仅依赖标准库与 `common/rctx`）、`common/commoncodes`（公共码字典：中英文、默认英文，key 即响应体业务 code） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/units`（输入转换原语：int 布尔、日期/毫秒时间戳解析，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `api/request`（请求参数解析/校验/时间解析/DTO 包装）、`api/response`（统一响应体 ApiResponse 与 VO→DTO 转换）、`api/handlers`（公共 handler：readyz 就绪探活）、`api/middleware/*`（observer / fault / guard / enrich 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `cmd/server`（组装全家桶：NewEngine 引擎装配 / Init 读 server 段 / NewServer+Run 优雅停机 / wire ProviderSet） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
@@ -312,7 +312,7 @@ check-layers:
   + 弱类型转换（int → bool 按 units.Bool 约定、时间字符串字段自动解析为
   time.Time）；需要组装/裁剪的转换业务手写
 - **必填字符串校验**：`name, err := request.Require(ctx, "username", c.Query("username"))`
-  ——去首尾空白，空则公共错误 `ParameterRequired`（commonerrors 字典按请求语言翻译；
+  ——去首尾空白，空则公共错误 `ParameterRequired`（commoncodes 字典按请求语言翻译；
   fault 透传 code，HTTP 200）
 
 ### 请求运行时上下文（common/rctx.RuntimeContext）
@@ -406,61 +406,58 @@ err = config.ValidateIsNumber(m, "log.file.maxSize")                    // 断�
 
 `common/bizerror` 提供统一业务错误 **BizError**（Code/Message/Err/Details
 四字段，原 FvError/fverr 包 2026-10-21 更名）：
-出口只输出 Message，Code 查状态码表、根因与明细全进日志。**每模块自己的多语言
-表**：错误文案按语言写成 Go 文件（`messages_<语言>.go`，编译期进包），生成器
-产出模块字典与构造函数——创建错误时按请求语言查模板插参，**出口不做翻译**，
-直出 Message。完整示例见 `examples/apifull`（usererrors + ordererrors 双模块）。
+出口只输出 Message，code 直接透传响应体，根因与明细全进日志。**每模块
+自己的多语言字典**：文案按语言写成 Go 文件（`messages_<语言>.go`，编译期
+进包），生成器产出码常量与 NewError/NewMessage 两个入口——创建错误时按
+请求语言查模板插参，**出口不做翻译**，直出 Message。完整示例见
+`examples/apifull`（usercodes + ordercodes 双模块）。
 
 ```go
-// 1. 模块内按语言写消息文件 messages_<语言>.go（文件名即语言，key 即 code，
+// 1. 模块码包内按语言写消息文件 messages_<语言>.go（文件名即语言，key 即码，
 //    {0} {1} 为位置占位符，各语言占位符在句中位置可不同）
 var MessagesEn = map[string]string{"UserNotFound": "user {0} not found"}
 var MessagesZh = map[string]string{"UserNotFound": "用户 {0} 不存在"}
 
-// 2. 生成 Code 常量、模块字典句柄 ErrorCode 与构造函数（与文件 key 一一对齐）
-//    cd usererrors && go run github.com/fab-viewer/common-lib/cmd/i18nerr \
-//        -dir . -pkg usererrors -default en
+// 2. 生成码常量与翻译入口（与文件 key 一一对齐；包名约定 xxxcodes——
+//    包名即模块码命名空间，引用形如 usercodes.UserNotFound）
+//    cd usercodes && go run github.com/fab-viewer/common-lib/cmd/i18nerr \
+//        -dir . -pkg usercodes -default en
 
 // 3. 错误处一行创建：按请求语言查模板 → 插参 → 补根因明细
-return usererrors.NewUserNotFound(ctx).
-    InsertArgs(id).                      // {0} 按调用序替换
-    AttachError(rootErr, map[string]any{"id": id})  // 只进日志
+return usercodes.NewError(ctx, usercodes.UserNotFound, id). // args 可选，{0} 按调用序替换
+    AttachError(rootErr, map[string]any{"id": id})          // 只进日志
+// 也可链式补参（与构造 args 等价）：
+// usercodes.NewError(ctx, usercodes.UserNotFound).InsertArgs(id)
 
 // 删除确认等带实体名的消息（角色名/用户名/登录策略名同理）：
-_ = c.Error(usererrors.NewConfirmDeleteUser(ctx).InsertArgs(u.Name))
+_ = c.Error(usercodes.NewError(ctx, usercodes.ConfirmDeleteUser).InsertArgs(u.Name))
 // → zh："确认删除用户 zhangsan 吗？"  en："confirm deleting user zhangsan?"
 
-// 4. 出口（fault）errMsg 直取错误消息；BizError 的 code 直接透传响应体 code
-//    （HTTP 恒 200，映射值进响应体 code）
-r.Use(fault.Fault(
-    fault.WithCodeMap(map[bizerror.Code]int{
-        usererrors.CodeUserNotFound: 1001,
-    }), ...)
+// 4. 纯文案出口（不限于错误，可塞进正常业务响应 data）：
+tip := usercodes.NewMessage(ctx, usercodes.OrderSubmitted, orderID)
+// 不带参取模板，调用点经 i18n.InsertArgs 自行替换：
+tip = i18n.InsertArgs(usercodes.NewMessage(ctx, usercodes.OrderSubmitted), orderID)
+
+// 5. 出口（fault）errMsg 直取错误消息；BizError 的 code 直接透传响应体
+//    code（HTTP 恒 200，无码表、无映射、无注册）
 ```
 
-- **唯一构造函数**：`bizerror.NewError(code, message, args...)`——Message 直传、
-  args 按序替换 {0} {1} 占位符（模块构造函数内部先查字典再交给它；基础设施层
+- **唯一底层构造**：`bizerror.NewError(code, message, args...)`——Message 直传、
+  args 按序替换 {0} {1} 占位符（模块 NewError 内部先查字典再交给它；基础设施层
   直传 message，根因经 `.AttachError(err, nil)` 链上）
 - **判断**：`bizerror.IsError(err)`、`bizerror.From(err)`（errors.Is/As 全兼容）
 - **语言来源**：标准头 `Accept-Language`（q 值降序取首选并规范化），经
   `enrich.Enrich` 注入 `rctx.RuntimeContext.Lang`，全链路可读
 - **回退链**：请求语言精确 → 基础语言（`zh-CN` → `zh`，只收窄不放宽）→
   模块默认语言 → key 原文
-- 多模块各自字典互不感知（无全局注册、无跨模块 key 冲突）；表并发安全
-
-**code 是字符串、与 bizerror.Code 同一命名空间**（统一业务码体系）：
-BizError 的 code 由 fault 直接透传进响应体，非 BizError 为默认 "FAIL"；
-OK 默认 "OK"。HTTP 状态码恒 200。fault 出口不做翻译或固定文案替换
-（BizError errMsg 取 Message，其余取 err.Error() 原文——未知错误根因直出
-响应体，业务方拍板取舍；失败日志带调用栈留痕）。
-| CONFLICT | 409 |
-| RATE_LIMITED | 429 |
-| INTERNAL_ERROR / DB_ERROR | 500 |
-| UPSTREAM_ERROR | 502 |
-
-- 模块码（如 `usererrors.CodeUserNotFound`）由 fault 直接透传为响应体 code；
-  未映射的自定义码按 500 处理。
-- 未知错误的 errMsg 为 err.Error() 原文直出响应体（根因随 `request fault` 日志带调用栈留痕）。
+- 多模块各持字典互不感知（无全局注册表，同 key 跨模块互不冲突）；表并发安全
+- **code 是字符串、与 bizerror.Code 同一命名空间**（统一业务码体系）：
+  BizError 的 code 由 fault 直接透传进响应体，非 BizError 为默认 "FAIL"；
+  OK 默认 "OK"。HTTP 状态码恒 200。fault 出口不做翻译或固定文案替换
+  （BizError errMsg 取 Message，其余取 err.Error() 原文——未知错误根因直出
+  响应体，业务方拍板取舍；失败日志带调用栈留痕）
+- 未知错误的 errMsg 为 err.Error() 原文直出响应体（根因随 `request fault`
+  日志带调用栈留痕）
 - `gorm.ErrRecordNotFound` / `sql.ErrNoRows` 不做内置翻译（errMsg 直出原文）。
 
 ## 各存储包部署前提与用法

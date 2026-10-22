@@ -12,9 +12,9 @@
 //	bizerror.IsError(err)          // 判断错误链中是否含 BizError
 //	bizerror.From(err)             // 取出 *BizError（检查 Code 等）
 //
-// 业务层的多语言创建经 cmd/i18nerr 生成的模块构造函数（如
-// usererrors.NewUserNotFound(ctx)）：内部先按请求语言从模块字典查模板，
-// 再交给 NewError，详见 cmd/i18nerr 与 examples/apifull。
+// 业务层的多语言创建经 cmd/i18nerr 生成的模块入口（如
+// usercodes.NewError(ctx, usercodes.UserNotFound)）：内部先按请求语言从
+// 模块字典查模板，再交给 NewError，详见 cmd/i18nerr 与 examples/apifull。
 //
 // 本包零三方依赖。
 package bizerror

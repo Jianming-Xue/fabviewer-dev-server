@@ -8,6 +8,6 @@
 //     转换；布尔输入按 units.Bool 约定，时间字符串字段自动解析为
 //     time.Time）
 //
-// 纯转换原语（布尔/日期时间）在 common/units，公共错误字典在
-// common/commonerrors（中英文，默认英文），本包只做面向 handler 的组合。
+// 纯转换原语（布尔/日期时间）在 common/units，公共码字典在
+// common/commoncodes（中英文，默认英文），本包只做面向 handler 的组合。
 package request

@@ -6,6 +6,26 @@
 
 ## [Unreleased]
 
+### Changed（Breaking：i18nerr 产物重塑为模块码包 xxxcodes，仅 NewError/NewMessage 两入口）
+
+- **Breaking**：模块码包更名 `xxxerrors` → `xxxcodes`（包名即码命名空间，
+  引用形如 `usercodes.UserNotFound`）：common-lib 的 commonerrors →
+  commoncodes、examples/apifull 的 usererrors/ordererrors → usercodes/
+  ordercodes、SM 的 usererrors → usercodes（git mv 保留历史）
+- i18nerr 产物 `errors_gen.go` → `messages_gen.go` 且大幅瘦身：码常量
+  （名字与值即 key 原文，不再 Code 前缀）+ 私有 dict/getMessage + 仅两个
+  入口 `NewError(ctx, code, args...)`（BizError）与 `NewMessage(ctx, code,
+  args...)`（纯文案 string，不限于错误，args 可选非强制）——删除 ErrorCode
+  字典句柄、模块级 New 与每 key 便捷构造函数
+- `i18n` 新增导出 `InsertArgs(template, args...)`：拿到模板 string 后调用
+  点自行插参（与 BizError.InsertArgs 同语义）
+- 修复：产物文件名与输入模式 `messages_(.+).go` 同形时被误当语言包解析
+  （生成器现显式跳过输出文件）
+- 调用点随迁：api 层 4 处（request.Time/Require、response.Fail 兜底、
+  guard panic 路径）、apifull 4 处、SM 6 处；README 状态码映射表残留、
+  i18n/doc.go、cmd/server/doc.go、bizerror 文档中已删机制（WithCodeMap/
+  CodeMap/RegisterAll）的腐化文案随迁清理
+
 ### Added（readyz 就绪探活 handler + commonerrors 公共错误字典）
 
 - 新增 `api/handlers` 包（公共 handler 集合，按 handler 一个文件追加）：

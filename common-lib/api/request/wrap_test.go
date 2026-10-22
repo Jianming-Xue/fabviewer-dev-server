@@ -10,7 +10,7 @@ import (
 
 	"github.com/fab-viewer/common-lib/api/request"
 	"github.com/fab-viewer/common-lib/common/bizerror"
-	"github.com/fab-viewer/common-lib/common/commonerrors"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
@@ -93,7 +93,7 @@ func TestRequire(t *testing.T) {
 			require.Error(t, err, "输入 %q 应报错", v)
 			e, ok := bizerror.From(err)
 			require.True(t, ok)
-			assert.Equal(t, commonerrors.CodeParameterRequired, e.Code)
+			assert.Equal(t, commoncodes.ParameterRequired, e.Code)
 			assert.Equal(t, "parameter username is required", e.Message)
 		}
 	})

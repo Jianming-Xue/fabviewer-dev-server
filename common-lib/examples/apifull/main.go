@@ -35,14 +35,14 @@ import (
 	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/logx"
 	"github.com/fab-viewer/common-lib/common/paging"
-	"github.com/fab-viewer/common-lib/examples/apifull/ordererrors"
-	"github.com/fab-viewer/common-lib/examples/apifull/usererrors"
+	"github.com/fab-viewer/common-lib/examples/apifull/ordercodes"
+	"github.com/fab-viewer/common-lib/examples/apifull/usercodes"
 )
 
-// 错误文案是本示例（业务服务）自己的配置：各模块（usererrors / ordererrors）
+// 错误文案是本示例（业务服务）自己的配置：各模块（usercodes / ordercodes）
 // 包内按语言写成 Go 文件（messages_en.go / messages_zh.go，编译期直接进包），
-// 生成器产出各自的 ErrorCode 字典与构造函数——模块字典跟着模块包走，
-// 无需全局注册；创建错误时按请求语言查模板，出口直出 Message 不翻译。
+// 生成器产出各自的码常量与 NewError/NewMessage 入口——模块字典跟着模块
+// 包走，无需全局注册；创建错误时按请求语言查模板，出口直出 Message 不翻译。
 
 // user 模拟业务对象层的 DTO。
 type user struct {
@@ -67,8 +67,8 @@ func (r *userRepo) list(_ context.Context, q paging.PageRequest) (paging.Pageabl
 	return paging.NewPageable[user](q, int64(len(r.data)), r.data[start:end]), nil
 }
 
-// get 模拟存储层读单条：NewUserNotFound(ctx) 创建时按请求语言查出模板
-// （如 "用户 {0} 不存在"），InsertArgs 按序替换占位符，AttachError 补根因
+// get 模拟存储层读单条：NewError 创建时按请求语言查出模板（如
+// "用户 {0} 不存在"），InsertArgs 按序替换占位符，AttachError 补根因
 // 与明细（只进日志）。
 func (r *userRepo) get(ctx context.Context, id int64) (user, error) {
 	for _, u := range r.data {
@@ -76,7 +76,7 @@ func (r *userRepo) get(ctx context.Context, id int64) (user, error) {
 			return u, nil
 		}
 	}
-	return user{}, usererrors.NewUserNotFound(ctx).
+	return user{}, usercodes.NewError(ctx, usercodes.UserNotFound).
 		InsertArgs(id).
 		AttachError(bizerror.ErrNotFound, map[string]any{"id": id})
 }
@@ -109,8 +109,8 @@ func main() {
 	}
 
 	// 引擎装配归 server.NewEngine：四中间件固定顺序 + /healthz 探活；
-	// 模块错误码（usererrors/ordererrors 的 bizerror.Code）由 fault 直接
-	// 透传到响应体 code，无需注册映射
+	// 模块码（usercodes/ordercodes 的码常量）由 fault 直接透传到响应体
+	// code，无需注册映射
 	r := server.NewEngine()
 
 	apiGroup := r.Group("/api")
@@ -127,8 +127,8 @@ func main() {
 			ID int64 `uri:"id" binding:"required"`
 		}
 		if err := c.ShouldBindUri(&req); err != nil {
-			// 错误处直接调模块构造函数：创建时即按请求语言查出 Message
-			_ = c.Error(usererrors.NewInvalidUserID(c.Request.Context()))
+			// 错误处直接调模块入口：创建时即按请求语言查出 Message
+			_ = c.Error(usercodes.NewError(c.Request.Context(), usercodes.InvalidUserID))
 			return
 		}
 		u, err := repo.get(c.Request.Context(), req.ID)
@@ -139,8 +139,8 @@ func main() {
 		response.OK(c, u)
 	})
 	apiGroup.GET("/orders/:id", func(c *gin.Context) {
-		// 演示多模块：ordererrors 与 usererrors 各自维护语言字典、互不感知
-		_ = c.Error(ordererrors.NewOrderNotFound(c.Request.Context()))
+		// 演示多模块：ordercodes 与 usercodes 各自维护语言字典、互不感知
+		_ = c.Error(ordercodes.NewError(c.Request.Context(), ordercodes.OrderNotFound))
 	})
 	apiGroup.DELETE("/users/:id", func(c *gin.Context) { deleteUser(c, repo) })
 
@@ -167,7 +167,7 @@ func deleteUser(c *gin.Context, repo *userRepo) {
 		ID int64 `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&req); err != nil {
-		_ = c.Error(usererrors.NewInvalidUserID(c.Request.Context()))
+		_ = c.Error(usercodes.NewError(c.Request.Context(), usercodes.InvalidUserID))
 		return
 	}
 	u, err := repo.get(c.Request.Context(), req.ID)
@@ -177,7 +177,7 @@ func deleteUser(c *gin.Context, repo *userRepo) {
 	}
 	if c.Query("confirm") != "true" {
 		// 未确认：返回带用户名的确认消息，前端弹确认框
-		_ = c.Error(usererrors.NewConfirmDeleteUser(c.Request.Context()).
+		_ = c.Error(usercodes.NewError(c.Request.Context(), usercodes.ConfirmDeleteUser).
 			InsertArgs(u.Name))
 		return
 	}

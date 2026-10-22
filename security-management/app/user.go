@@ -1,5 +1,5 @@
 // Package app 提供 services 包接口的实现：编排 domain 端口、表达业务
-// 错误语义（经模块错误语言包 usererrors，按请求语言生成 Message）。
+// 错误语义（经模块码包 usercodes，按请求语言生成 Message）。
 package app
 
 import (
@@ -10,7 +10,7 @@ import (
 	"github.com/fab-viewer/common-lib/common/paging"
 	"github.com/fab-viewer/security-management/domain"
 	"github.com/fab-viewer/security-management/services"
-	"github.com/fab-viewer/security-management/usererrors"
+	"github.com/fab-viewer/security-management/usercodes"
 )
 
 // UserService 实现 services.UserService。
@@ -28,7 +28,7 @@ func (s *UserService) Create(ctx context.Context, cmd services.CreateUserCmd) (s
 	if dup, err := s.users.FindByUsername(ctx, cmd.Username); err != nil {
 		return services.UserDTO{}, wrapStorage(ctx, "FindByUsername", err)
 	} else if dup != nil {
-		return services.UserDTO{}, usererrors.NewUserAlreadyExists(ctx).
+		return services.UserDTO{}, usercodes.NewError(ctx, usercodes.UserAlreadyExists).
 			InsertArgs(cmd.Username).
 			AttachError(nil, map[string]any{"username": cmd.Username})
 	}
@@ -52,7 +52,7 @@ func (s *UserService) Get(ctx context.Context, id string) (services.UserDTO, err
 		return services.UserDTO{}, wrapStorage(ctx, "FindByID", err)
 	}
 	if u == nil {
-		return services.UserDTO{}, usererrors.NewUserNotFound(ctx).
+		return services.UserDTO{}, usercodes.NewError(ctx, usercodes.UserNotFound).
 			InsertArgs(id).
 			AttachError(nil, map[string]any{"id": id})
 	}
@@ -80,13 +80,13 @@ func (s *UserService) Delete(ctx context.Context, id string, confirmed bool) err
 		return wrapStorage(ctx, "FindByID", err)
 	}
 	if u == nil {
-		return usererrors.NewUserNotFound(ctx).
+		return usercodes.NewError(ctx, usercodes.UserNotFound).
 			InsertArgs(id).
 			AttachError(nil, map[string]any{"id": id})
 	}
 	if !confirmed {
 		// 确认消息必须带上被删对象的 Name（用户模块即显示名）
-		return usererrors.NewConfirmDeleteUser(ctx).
+		return usercodes.NewError(ctx, usercodes.ConfirmDeleteUser).
 			InsertArgs(u.Name).
 			AttachError(nil, map[string]any{"id": id, "name": u.Name})
 	}

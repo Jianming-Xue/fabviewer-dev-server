@@ -146,11 +146,10 @@ func NewBundles(defaultLang Language) *Bundles {
 }
 
 // Register 按语言合并注册消息集：同 key 后注册覆盖先注册，不同 key 共存
-// ——服务内多模块各自持有语言包（messages_<语言>.go + 生成的 RegisterAll）
-// 时，组装根依次调用即天然合并。入参被复制（注册后修改原 map 不生效），
-// lang 自动规范化。key 通常即业务错误变量名（见包文档），模板用 fmt 动词
-// 承接参数；key 在服务内需唯一，跨模块建议命名足够具体（如带模块语义
-// 前缀）避免相互覆盖。
+// ——模块语言包（messages_<语言>.go + i18nerr 生成的 init 注册）编译期
+// 注册进本模块字典。入参被复制（注册后修改原 map 不生效），lang 自动
+// 规范化。key 即模块码（见包文档与 cmd/i18nerr），模板用 {0} {1} 位置
+// 占位符承接参数；字典随模块包走（每模块一个），同 key 跨模块互不冲突。
 func (b *Bundles) Register(lang Language, msgs map[string]string) {
 	cp := make(map[string]string, len(msgs))
 	for k, v := range msgs {
@@ -199,13 +198,14 @@ func (b *Bundles) TOf(lang Language, key string, args ...any) string {
 	if msg == "" {
 		return key
 	}
-	return insertPlaceholders(msg, args)
+	return InsertArgs(msg, args...)
 }
 
-// insertPlaceholders 将模板中的 {0} {1} ... 按序替换为参数值
-// （无占位符或参数多余时忽略）。与 bizerror.InsertArgs 同语义（两包互不
-// 依赖，各自内联实现）。
-func insertPlaceholders(template string, args []any) string {
+// InsertArgs 将模板中的 {0} {1} ... 按序替换为参数值，返回替换后的文案
+// （无占位符或参数多余时忽略）。与 bizerror.BizError.InsertArgs 同语义
+// （两包互不依赖，各自实现）：拿到模板 string 后可在调用点自行替换，
+// 供 NewMessage 不带参取模板后的补充插参等场景使用。
+func InsertArgs(template string, args ...any) string {
 	for i, a := range args {
 		template = strings.ReplaceAll(template,
 			"{"+strconv.Itoa(i)+"}", fmt.Sprint(a))

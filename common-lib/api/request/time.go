@@ -5,14 +5,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fab-viewer/common-lib/common/commonerrors"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/common/units"
 )
 
 // Time 校验并解析时间字符串参数，按内容长度识别 wire 格式：8 位
 // yyyyMMdd（当日零点）、14 位 yyyyMMddHHmmss、13 位毫秒时间戳。
 // 空串/纯空白返回零值不报错（可选参数语义）；非法格式返回公共错误
-// InvalidTime（commonerrors 字典按请求语言翻译，errMsg 携带参数名与原值）。
+// InvalidTime（commoncodes 字典按请求语言翻译，errMsg 携带参数名与原值）。
 func Time(ctx context.Context, name, v string) (time.Time, error) {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -20,7 +20,8 @@ func Time(ctx context.Context, name, v string) (time.Time, error) {
 	}
 	t, err := parseTimeByLength(v)
 	if err != nil {
-		return time.Time{}, commonerrors.NewInvalidTime(ctx).InsertArgs(name, v)
+		return time.Time{}, commoncodes.NewError(ctx, commoncodes.InvalidTime).
+			InsertArgs(name, v)
 	}
 	return t, nil
 }

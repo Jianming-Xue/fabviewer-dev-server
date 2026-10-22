@@ -10,7 +10,7 @@ import (
 
 	"github.com/fab-viewer/common-lib/api/request"
 	"github.com/fab-viewer/common-lib/common/bizerror"
-	"github.com/fab-viewer/common-lib/common/commonerrors"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
@@ -49,7 +49,7 @@ func TestTime(t *testing.T) {
 			require.Error(t, err, "输入 %q 应报错", v)
 			e, ok := bizerror.From(err)
 			require.True(t, ok)
-			assert.Equal(t, commonerrors.CodeInvalidTime, e.Code)
+			assert.Equal(t, commoncodes.InvalidTime, e.Code)
 			assert.Contains(t, e.Message, "createdFrom", "errMsg 携带参数名")
 			assert.Contains(t, e.Message, v, "errMsg 携带原值")
 		}

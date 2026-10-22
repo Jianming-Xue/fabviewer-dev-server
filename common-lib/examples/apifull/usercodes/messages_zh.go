@@ -1,4 +1,4 @@
-package usererrors
+package usercodes
 
 // MessagesZh 是本模块的中文错误文案，key 与 MessagesEn 对齐（缺 key 时
 // 回退默认语言文案）；占位符 {0} 在句中位置可与英文不同。

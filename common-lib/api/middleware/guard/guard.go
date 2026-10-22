@@ -7,13 +7,13 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/fab-viewer/common-lib/api/response"
-	"github.com/fab-viewer/common-lib/common/commonerrors"
+	"github.com/fab-viewer/common-lib/common/commoncodes"
 	"github.com/fab-viewer/common-lib/common/logx"
 	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
 // Guard 兜住 panic（守护）：记录含事务 ID 的错误日志与堆栈，写回公共错误
-// InternalError 统一响应体（commonerrors 按请求语言翻译），防止进程崩溃。
+// InternalError 统一响应体（commoncodes 按请求语言翻译），防止进程崩溃。
 // 响应已写过（panic 前已部分输出）则不再追加写。
 // 日志经全局出口 logx 记录（测试经 logx.SetLogger 注入），组件零持有日志对象。
 func Guard() gin.HandlerFunc {
@@ -34,7 +34,7 @@ func Guard() gin.HandlerFunc {
 				c.Abort()
 				return
 			}
-			e := commonerrors.NewInternalError(c.Request.Context())
+			e := commoncodes.NewError(c.Request.Context(), commoncodes.InternalError)
 			response.Fail(c, e.Message, response.WithCode(string(e.Code)))
 			c.Abort()
 		}()

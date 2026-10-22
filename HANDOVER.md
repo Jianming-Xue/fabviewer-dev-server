@@ -29,8 +29,8 @@ services/
 | HTTP 装配 | 引擎/四中间件/healthz/优雅停机归 `common-lib/cmd/server`（NewEngine 传模块码表 + Init 读 server 段 + NewServer/Run）；业务经 wire `server.ProviderSet` 装配，main 只剩 InitializeServer → Run；server 段默认 :8080/release，超时写 "5s" 式字符串 |
 | 日志 | `logx.Init(cfgMap)` 唯一初始化（cmd/server 统一装配调用）；业务一律包级函数 `logx.Info/Warn/Error/Debug` 零持有；双出口 console/file（lumberjack 滚动）、等级链 outlet→global→info 静默兜底、format json 默认/console；caller 指向业务行；测试经 SetLogger 注入 |
 | 统一响应 | `response.ApiResponse` 五字段（code/success/errMsg/data/txId），**HTTP 恒 200**；构建仅 `OK`/`Fail`：code 是业务码（OK 默认 **1**、Fail 默认 **0**，WithCode 可改），OK 的 errMsg 可选、Fail 的 errMsg 必填且 data 恒 nil；data 由 handler 给（single/集合/分页 pageable）；模块错误码经 `fault.WithCodeMap` 映射业务 code；VO→DTO 出参 time→yyyyMMddHHmmss 字符串、bool→int（response.Wrap 或 units 原语） |
-| 统一错误 | `bizerror.BizError` 四字段（原 fverr/FvError 更名）；唯一构造 `NewError(code,msg,args...)` + 链式 `InsertArgs`/`AttachError`；判断 `IsError/From`；出口只出 Message 其余进日志；**错误编码不出响应体** |
-| 错误多语言 | 每模块自己的 `messages_<语言>.go`（key 即 code，`{0}` 位置占位符）；`go generate`（i18nerr）产出构造函数；模块字典跟包走、无全局注册 |
+| 统一错误 | `bizerror.BizError` 四字段（原 fverr/FvError 更名）；唯一底层构造 `NewError(code,msg,args...)` + 链式 `InsertArgs`/`AttachError`；判断 `IsError/From`；出口只出 Message 其余进日志，code 字符串直接透传响应体 |
+| 错误多语言 | 模块码包 `xxxcodes`：`messages_<语言>.go`（key 即码，`{0}` 位置占位符）+ `go generate`（i18nerr）产出码常量与 `NewError`/`NewMessage`；模块字典跟包走、无全局注册表，同 key 跨模块互不冲突 |
 | 删除确认 | 确认消息必须带实体名：模板 `{0}` + `InsertArgs(name)`（用户/角色/登录策略同理） |
 | 输入转换 | 布尔输入为 int：1→true、其余（含 0）→false、零值即默认 false（`units.Bool`）；日期两种字符串 `20261021`/`20261021100000` 与 13 位毫秒时间戳经 `common/units` 解析为**本地时间**；DTO→service VO 用 `request.Wrap[VO]`，必填校验 `request.Require` |
 | 请求上下文 | `rctx.RuntimeContext` **字段私有**（`WithID/WithTime/WithName/WithUser/WithLang` 链式赋值、`FromXxx` 取值）；中间件 `FillRuntimeContext()` 注入请求 context（单路，rctx 直取）；**userName 即审计操作者**（原 actortx 包已并入删除，GORM 审计钩子自动填 CreatedBy/UpdatedBy） |
