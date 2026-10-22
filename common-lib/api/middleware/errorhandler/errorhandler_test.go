@@ -15,8 +15,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/fab-viewer/common-lib/api/internal/testutil"
+	"github.com/fab-viewer/common-lib/api/middleware/enrich"
 	"github.com/fab-viewer/common-lib/api/middleware/errorhandler"
-	"github.com/fab-viewer/common-lib/api/middleware/runtimecontext"
 	"github.com/fab-viewer/common-lib/common/bizerror"
 )
 
@@ -76,7 +76,7 @@ func TestErrorHandlerFvMessageDirectOutput(t *testing.T) {
 	r := testutil.NewTestEngine()
 	r.Use(
 		errorhandler.ErrorHandler(),
-		runtimecontext.FillRuntimeContext(),
+		enrich.Enrich(),
 	)
 	r.GET("/e", func(c *gin.Context) {
 		_ = c.Error(bizerror.NewError(bizerror.CodeNotFound, "用户 42 不存在").AttachError(errors.New("root"), nil))

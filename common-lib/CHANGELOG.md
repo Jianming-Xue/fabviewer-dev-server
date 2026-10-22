@@ -6,6 +6,18 @@
 
 ## [Unreleased]
 
+### Changed（Breaking：四中间件按业务方拍板更名）
+
+- `accesslog` → **`observer`**：`AccessLog()` → `Observe()`（访问观察者，
+  记录访问日志）
+- `recovery` → **`guard`**：`Recovery()` → `Guard()`（守护兜底，panic →
+  500 统一体）
+- `runtimecontext` → **`enrich`**：`FillRuntimeContext()` → `Enrich()`
+  （上下文丰富，组装注入请求运行时上下文；五请求头常量随包迁移
+  `enrich.HeaderTxID` 等）
+- 注册顺序契约表述随迁：`observer.Observe() → errorhandler.ErrorHandler()
+  → guard.Guard() → enrich.Enrich()`
+
 ### Changed（Breaking：请求运行时上下文收敛单路存储，api/reqctx 包删除）
 
 - RuntimeContext 只存请求 context 一份：`FillRuntimeContext` 注入方式

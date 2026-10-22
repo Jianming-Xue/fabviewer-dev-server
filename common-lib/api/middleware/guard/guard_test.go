@@ -1,4 +1,4 @@
-package recovery_test
+package guard_test
 
 import (
 	"encoding/json"
@@ -10,13 +10,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/api/internal/testutil"
-	"github.com/fab-viewer/common-lib/api/middleware/recovery"
+	"github.com/fab-viewer/common-lib/api/middleware/guard"
 )
 
-func TestRecoveryPanickingHandler(t *testing.T) {
+func TestGuardPanickingHandler(t *testing.T) {
 	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(recovery.Recovery())
+	r.Use(guard.Guard())
 	r.GET("/boom", func(_ *gin.Context) { panic("something exploded") })
 
 	w := testutil.DoGet(r, "/boom")
@@ -46,10 +46,10 @@ func TestRecoveryPanickingHandler(t *testing.T) {
 	assert.True(t, ok, "panic 日志必须带堆栈")
 }
 
-func TestRecoveryAfterPartialWrite(t *testing.T) {
+func TestGuardAfterPartialWrite(t *testing.T) {
 	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(recovery.Recovery())
+	r.Use(guard.Guard())
 	r.GET("/partial", func(c *gin.Context) {
 		c.String(http.StatusOK, "partial response")
 		panic("late panic")
@@ -60,10 +60,10 @@ func TestRecoveryAfterPartialWrite(t *testing.T) {
 	assert.Len(t, log.Snapshot(), 1, "panic 仍应记录日志")
 }
 
-func TestRecoveryNormalPassThrough(t *testing.T) {
+func TestGuardNormalPassThrough(t *testing.T) {
 	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(recovery.Recovery())
+	r.Use(guard.Guard())
 	r.GET("/ok", func(c *gin.Context) { c.String(http.StatusOK, "fine") })
 
 	w := testutil.DoGet(r, "/ok")

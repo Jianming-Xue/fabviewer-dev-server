@@ -9,7 +9,7 @@ type ctxKey struct{}
 
 // RuntimeContext 是请求运行时上下文的载荷：接口层从请求头（txId/txTime/
 // txName/userName 及标准头 Accept-Language）解析组装，经
-// middleware.FillRuntimeContext 注入，整个请求期间全链路可读。
+// middleware/enrich.Enrich 注入，整个请求期间全链路可读。
 //
 // 字段全部私有，经 WithXxx 链式赋值（值语义，返回新副本）、FromXxx 取值；
 // 定时任务无请求头，入口自注入：

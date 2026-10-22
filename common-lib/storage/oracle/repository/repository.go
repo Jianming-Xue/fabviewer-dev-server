@@ -22,7 +22,7 @@ import (
 //	    OrderNo string
 //	}
 //	repo, err := repository.NewRepository[orderPO](db)
-//	err = repo.Create(ctx, &po)  // ctx 来自 middleware.FillRuntimeContext（userName）或 rctx.SetRuntimeContext
+//	err = repo.Create(ctx, &po)  // ctx 来自 middleware/enrich.Enrich（userName）或 rctx.SetRuntimeContext
 //	err = repo.Update(ctx, &po)
 //
 // T 必须嵌入 BasePO，否则 Create/Update 返回校验错误；需要之外的写法时

@@ -5,10 +5,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/fab-viewer/common-lib/api/middleware/accesslog"
+	"github.com/fab-viewer/common-lib/api/middleware/enrich"
 	"github.com/fab-viewer/common-lib/api/middleware/errorhandler"
-	"github.com/fab-viewer/common-lib/api/middleware/recovery"
-	"github.com/fab-viewer/common-lib/api/middleware/runtimecontext"
+	"github.com/fab-viewer/common-lib/api/middleware/guard"
+	"github.com/fab-viewer/common-lib/api/middleware/observer"
 	"github.com/fab-viewer/common-lib/common/bizerror"
 )
 
@@ -35,8 +35,8 @@ func WithMessageFunc(fn func(*gin.Context, *bizerror.BizError) string) EngineOpt
 	}
 }
 
-// NewEngine 组装引擎：按固定顺序挂四中间件（accesslog → errorhandler →
-// recovery → runtimecontext，顺序契约见 api/middleware 包文档）并内置
+// NewEngine 组装引擎：按固定顺序挂四中间件（observer → errorhandler →
+// guard → enrich，顺序契约见 api/middleware 包文档）并内置
 // /healthz 探活（访问日志默认跳过）。
 //
 // codeMap 是业务模块错误码 → 响应体业务 code 的映射（每个业务必传，
@@ -54,10 +54,10 @@ func NewEngine(codeMap map[bizerror.Code]int, opts ...EngineOption) *gin.Engine 
 
 	r := gin.New()
 	r.Use(
-		accesslog.AccessLog(accesslog.WithSkipPaths(cfg.skipPaths...)),
+		observer.Observe(observer.WithSkipPaths(cfg.skipPaths...)),
 		errorhandler.ErrorHandler(ehOpts...),
-		recovery.Recovery(),
-		runtimecontext.FillRuntimeContext(),
+		guard.Guard(),
+		enrich.Enrich(),
 	)
 	r.GET("/healthz", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	return r

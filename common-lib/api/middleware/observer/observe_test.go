@@ -1,4 +1,4 @@
-package accesslog_test
+package observer_test
 
 import (
 	"net/http"
@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/api/internal/testutil"
-	"github.com/fab-viewer/common-lib/api/middleware/accesslog"
+	"github.com/fab-viewer/common-lib/api/middleware/observer"
 )
 
-func TestAccessLogRecords(t *testing.T) {
+func TestObserveRecords(t *testing.T) {
 	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(accesslog.AccessLog())
+	r.Use(observer.Observe())
 	r.GET("/data", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
 	w := testutil.DoGet(r, "/data")
@@ -39,10 +39,10 @@ func TestAccessLogRecords(t *testing.T) {
 	assert.Equal(t, http.StatusOK, v)
 }
 
-func TestAccessLogSkipsHealthz(t *testing.T) {
+func TestObserveSkipsHealthz(t *testing.T) {
 	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(accesslog.AccessLog())
+	r.Use(observer.Observe())
 	r.GET("/healthz", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/livez", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/readyz", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
@@ -58,10 +58,10 @@ func TestAccessLogSkipsHealthz(t *testing.T) {
 	assert.Equal(t, "/api/data", testutil.MustKVString(t, records[0].KV, "path"))
 }
 
-func TestAccessLogWithSkipPaths(t *testing.T) {
+func TestObserveWithSkipPaths(t *testing.T) {
 	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
-	r.Use(accesslog.AccessLog(accesslog.WithSkipPaths("/ping", "/internal/metrics")))
+	r.Use(observer.Observe(observer.WithSkipPaths("/ping", "/internal/metrics")))
 	r.GET("/ping", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/internal/metrics", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	r.GET("/users", func(c *gin.Context) { c.String(http.StatusOK, "ok") })

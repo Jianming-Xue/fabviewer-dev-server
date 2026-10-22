@@ -62,7 +62,7 @@ func TestNewEngine(t *testing.T) {
 		w := doGet(r, "/boom")
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), `"code":0`)
-		assert.NotEmpty(t, w.Header().Get("txId"), "runtimecontext 中间件已入链")
+		assert.NotEmpty(t, w.Header().Get("txId"), "enrich 中间件已入链")
 	})
 }
 

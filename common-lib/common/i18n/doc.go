@@ -6,7 +6,7 @@
 // 能力三件套：
 //
 //   - 语言解析：ParseAcceptLanguage 解析标准 Accept-Language 头（含 q 值
-//     排序），middleware.FillRuntimeContext 取首选语言规范化后
+//     排序），middleware/enrich.Enrich 取首选语言规范化后
 //     注入 rctx.RuntimeContext 的请求语言
 //   - 消息集：Bundles 按「语言 → key → 模板」组织译文，Register 注册，
 //     T/TOf 按回退链查找（请求语言 → 基础语言 → 默认语言 → key 兜底模板）

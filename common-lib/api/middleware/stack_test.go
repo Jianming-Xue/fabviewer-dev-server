@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/api/internal/testutil"
-	"github.com/fab-viewer/common-lib/api/middleware/accesslog"
+	"github.com/fab-viewer/common-lib/api/middleware/enrich"
 	"github.com/fab-viewer/common-lib/api/middleware/errorhandler"
-	"github.com/fab-viewer/common-lib/api/middleware/recovery"
-	"github.com/fab-viewer/common-lib/api/middleware/runtimecontext"
+	"github.com/fab-viewer/common-lib/api/middleware/guard"
+	"github.com/fab-viewer/common-lib/api/middleware/observer"
 	"github.com/fab-viewer/common-lib/api/response"
 	"github.com/fab-viewer/common-lib/common/bizerror"
 )
@@ -24,10 +24,10 @@ func TestFullStack(t *testing.T) {
 	log := testutil.CaptureLog(t)
 	r := testutil.NewTestEngine()
 	r.Use(
-		accesslog.AccessLog(),
+		observer.Observe(),
 		errorhandler.ErrorHandler(),
-		recovery.Recovery(),
-		runtimecontext.FillRuntimeContext(),
+		guard.Guard(),
+		enrich.Enrich(),
 	)
 	r.GET("/ok", func(c *gin.Context) { response.OK(c, gin.H{"x": 1}) })
 	r.GET("/fail", func(c *gin.Context) {
@@ -38,7 +38,7 @@ func TestFullStack(t *testing.T) {
 	t.Run("成功路径", func(t *testing.T) {
 		w := testutil.DoGet(r, "/ok")
 		require.Equal(t, http.StatusOK, w.Code)
-		assert.NotEmpty(t, w.Header().Get(runtimecontext.HeaderTxID))
+		assert.NotEmpty(t, w.Header().Get(enrich.HeaderTxID))
 
 		var b struct {
 			Code    int    `json:"code"`
@@ -48,7 +48,7 @@ func TestFullStack(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
 		assert.Equal(t, 1, b.Code, "OK 默认业务码 1")
 		assert.True(t, b.Success)
-		assert.Equal(t, w.Header().Get(runtimecontext.HeaderTxID), b.TxID,
+		assert.Equal(t, w.Header().Get(enrich.HeaderTxID), b.TxID,
 			"响应体 txId 与响应头一致")
 	})
 
@@ -60,7 +60,7 @@ func TestFullStack(t *testing.T) {
 	t.Run("panic 路径", func(t *testing.T) {
 		w := testutil.DoGet(r, "/panic")
 		require.Equal(t, http.StatusOK, w.Code)
-		assert.NotEmpty(t, w.Header().Get(runtimecontext.HeaderTxID),
+		assert.NotEmpty(t, w.Header().Get(enrich.HeaderTxID),
 			"panic 响应仍应带 txId 头")
 
 		var b struct {

@@ -1,4 +1,4 @@
-package runtimecontext_test
+package enrich_test
 
 import (
 	"errors"
@@ -12,17 +12,17 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/api/internal/testutil"
-	"github.com/fab-viewer/common-lib/api/middleware/runtimecontext"
+	"github.com/fab-viewer/common-lib/api/middleware/enrich"
 	"github.com/fab-viewer/common-lib/api/response"
 	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
 var txidPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
-func TestRuntimeContextFullHeaders(t *testing.T) {
+func TestEnrichFullHeaders(t *testing.T) {
 	var got rctx.RuntimeContext
 	r := testutil.NewTestEngine()
-	r.Use(runtimecontext.FillRuntimeContext())
+	r.Use(enrich.Enrich())
 	r.GET("/echo", func(c *gin.Context) {
 		got = rctx.GetRuntimeContext(c.Request.Context())
 		c.String(http.StatusOK, got.FromID())
@@ -30,11 +30,11 @@ func TestRuntimeContextFullHeaders(t *testing.T) {
 
 	reqTime := "20261019173000"
 	w := testutil.DoGetWithHeaders(r, "/echo", map[string]string{
-		runtimecontext.HeaderTxID:           "tx-42",
-		runtimecontext.HeaderTxTime:         reqTime,
-		runtimecontext.HeaderTxName:         "queryUsers",
-		runtimecontext.HeaderUserName:       "zhangsan",
-		runtimecontext.HeaderAcceptLanguage: "zh-CN,zh;q=0.9,en;q=0.8",
+		enrich.HeaderTxID:           "tx-42",
+		enrich.HeaderTxTime:         reqTime,
+		enrich.HeaderTxName:         "queryUsers",
+		enrich.HeaderUserName:       "zhangsan",
+		enrich.HeaderAcceptLanguage: "zh-CN,zh;q=0.9,en;q=0.8",
 	})
 
 	require.Equal(t, http.StatusOK, w.Code)
@@ -45,10 +45,10 @@ func TestRuntimeContextFullHeaders(t *testing.T) {
 		WithUser("zhangsan").
 		WithLang("zh-CN"), got, "五字段完整解析进 tx 上下文")
 	assert.Equal(t, "tx-42", w.Body.String(), "请求 context 可读")
-	assert.Equal(t, "tx-42", w.Header().Get(runtimecontext.HeaderTxID), "响应头回写 txId")
+	assert.Equal(t, "tx-42", w.Header().Get(enrich.HeaderTxID), "响应头回写 txId")
 }
 
-func TestRuntimeContextLanguage(t *testing.T) {
+func TestEnrichLanguage(t *testing.T) {
 	tests := []struct {
 		name   string
 		header string
@@ -64,21 +64,21 @@ func TestRuntimeContextLanguage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var got rctx.RuntimeContext
 			r := testutil.NewTestEngine()
-			r.Use(runtimecontext.FillRuntimeContext())
+			r.Use(enrich.Enrich())
 			r.GET("/e", func(c *gin.Context) {
 				got = rctx.GetRuntimeContext(c.Request.Context())
 				assert.Equal(t, got.FromLang(), rctx.GetRuntimeContext(c.Request.Context()).FromLang(), "handler 侧 rctx 直取请求语言")
 			})
 
-			testutil.DoGetWithHeaders(r, "/e", map[string]string{runtimecontext.HeaderAcceptLanguage: tt.header})
+			testutil.DoGetWithHeaders(r, "/e", map[string]string{enrich.HeaderAcceptLanguage: tt.header})
 			assert.Equal(t, tt.want, got.FromLang())
 		})
 	}
 }
 
-func TestRuntimeContextOfInHandler(t *testing.T) {
+func TestEnrichOfInHandler(t *testing.T) {
 	r := testutil.NewTestEngine()
-	r.Use(runtimecontext.FillRuntimeContext())
+	r.Use(enrich.Enrich())
 	r.GET("/gin-side", func(c *gin.Context) {
 		g := rctx.GetRuntimeContext(c.Request.Context())
 		assert.Equal(t, "tx-7", g.FromID())
@@ -87,13 +87,13 @@ func TestRuntimeContextOfInHandler(t *testing.T) {
 	})
 
 	w := testutil.DoGetWithHeaders(r, "/gin-side", map[string]string{
-		runtimecontext.HeaderTxID:   "tx-7",
-		runtimecontext.HeaderTxName: "listOrders",
+		enrich.HeaderTxID:   "tx-7",
+		enrich.HeaderTxName: "listOrders",
 	})
 	assert.Equal(t, "tx-7", w.Body.String(), "handler 侧 rctx 直取事务 ID")
 }
 
-func TestRuntimeContextTxTimeFallback(t *testing.T) {
+func TestEnrichTxTimeFallback(t *testing.T) {
 	tests := []struct {
 		name   string
 		header string
@@ -107,11 +107,11 @@ func TestRuntimeContextTxTimeFallback(t *testing.T) {
 			var got rctx.RuntimeContext
 			before := time.Now().Add(-time.Second)
 			r := testutil.NewTestEngine()
-			r.Use(runtimecontext.FillRuntimeContext())
+			r.Use(enrich.Enrich())
 			r.GET("/e", func(c *gin.Context) { got = rctx.GetRuntimeContext(c.Request.Context()) })
 
 			testutil.DoGetWithHeaders(r, "/e", map[string]string{
-				runtimecontext.HeaderTxTime: tt.header,
+				enrich.HeaderTxTime: tt.header,
 			})
 
 			after := time.Now().Add(time.Second)
@@ -121,16 +121,16 @@ func TestRuntimeContextTxTimeFallback(t *testing.T) {
 	}
 }
 
-func TestRuntimeContextUserNameToActor(t *testing.T) {
+func TestEnrichUserNameToActor(t *testing.T) {
 	var actorID string
 	r := testutil.NewTestEngine()
-	r.Use(runtimecontext.FillRuntimeContext())
+	r.Use(enrich.Enrich())
 	r.GET("/audit", func(c *gin.Context) {
 		actorID = rctx.GetRuntimeContext(c.Request.Context()).FromUser()
 	})
 
 	testutil.DoGetWithHeaders(r, "/audit", map[string]string{
-		runtimecontext.HeaderUserName: "zhangsan",
+		enrich.HeaderUserName: "zhangsan",
 	})
 	assert.Equal(t, "zhangsan", actorID, "userName 即审计操作者（RuntimeContext.User）")
 
@@ -138,29 +138,29 @@ func TestRuntimeContextUserNameToActor(t *testing.T) {
 	assert.Empty(t, actorID, "userName 缺失时操作者为空")
 }
 
-func TestRuntimeContextTxIDGenerate(t *testing.T) {
+func TestEnrichTxIDGenerate(t *testing.T) {
 	r := testutil.NewTestEngine()
-	r.Use(runtimecontext.FillRuntimeContext())
+	r.Use(enrich.Enrich())
 	r.GET("/echo", func(c *gin.Context) {
 		c.String(http.StatusOK, rctx.GetRuntimeContext(c.Request.Context()).FromID())
 	})
 
 	w := testutil.DoGet(r, "/echo")
 
-	id := w.Header().Get(runtimecontext.HeaderTxID)
+	id := w.Header().Get(enrich.HeaderTxID)
 	require.NotEmpty(t, id, "响应头必须回写 txId")
 	assert.Regexp(t, txidPattern, id, "生成的 ID 为 32 字符小写 hex")
 	assert.Equal(t, id, w.Body.String(), "上下文中的 ID 与响应头一致")
 }
 
-func TestRuntimeContextTxIDUniqueness(t *testing.T) {
+func TestEnrichTxIDUniqueness(t *testing.T) {
 	seen := make(map[string]struct{}, 100)
 	r := testutil.NewTestEngine()
-	r.Use(runtimecontext.FillRuntimeContext())
+	r.Use(enrich.Enrich())
 	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	for range 100 {
-		id := testutil.DoGet(r, "/x").Header().Get(runtimecontext.HeaderTxID)
+		id := testutil.DoGet(r, "/x").Header().Get(enrich.HeaderTxID)
 		seen[id] = struct{}{}
 	}
 	assert.Len(t, seen, 100, "100 次请求 ID 不得重复")
@@ -168,14 +168,14 @@ func TestRuntimeContextTxIDUniqueness(t *testing.T) {
 
 // 测 crypto/rand 失败的降级分支（注入失败的 randRead）。
 func TestNewTxIDFallback(t *testing.T) {
-	orig := runtimecontext.RandReadForTest()
-	t.Cleanup(func() { runtimecontext.RestoreRandRead(orig) })
+	orig := enrich.RandReadForTest()
+	t.Cleanup(func() { enrich.RestoreRandRead(orig) })
 
-	runtimecontext.SetRandRead(func(_ []byte) (int, error) {
+	enrich.SetRandRead(func(_ []byte) (int, error) {
 		return 0, errors.New("entropy exhausted")
 	})
 
-	id := runtimecontext.NewTxIDForTest()
+	id := enrich.NewTxIDForTest()
 	assert.Regexp(t, regexp.MustCompile(`^t\d+$`), id, "降级为时间戳前缀")
 }
 
@@ -184,7 +184,7 @@ func TestNewTxIDFallback(t *testing.T) {
 // 访问日志）都见新值，不存在第二份存储的漂移。
 func TestRequestContextUpdateVisibleToAll(t *testing.T) {
 	r := testutil.NewTestEngine()
-	r.Use(runtimecontext.FillRuntimeContext())
+	r.Use(enrich.Enrich())
 	r.Use(func(c *gin.Context) { // 模拟业务认证中间件：解析出真实用户后更新操作者
 		rc := rctx.GetRuntimeContext(c.Request.Context())
 		c.Request = c.Request.WithContext(
@@ -198,7 +198,7 @@ func TestRequestContextUpdateVisibleToAll(t *testing.T) {
 	})
 
 	testutil.DoGetWithHeaders(r, "/audit", map[string]string{
-		runtimecontext.HeaderUserName: "zhangsan",
+		enrich.HeaderUserName: "zhangsan",
 	})
 	assert.Equal(t, "u-77", got, "操作者更新对 handler 生效")
 }

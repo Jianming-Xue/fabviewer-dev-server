@@ -69,7 +69,7 @@ api/response      统一响应体 ApiResponse（code/success/errMsg/data/txId）
                   （WithCode/WithErrMsg）+ Wrap[DTO]（VO→DTO：
                   time→yyyyMMddHHmmss、bool→int）
 api/middleware    按处理流程点分包（根包仅承载注册顺序契约与全栈测试）：
-                  accesslog → errorhandler → recovery → runtimecontext
+                  observer → errorhandler → guard → enrich
                   （顺序固定；三日志中间件零持有日志对象，经 logx 全局出口）
 cmd/server        组装全家桶：NewEngine（引擎+四中间件+/healthz）、Init
                   （server 段）、NewServer+Run（优雅停机）、ProviderSet（wire）
@@ -121,7 +121,7 @@ logx 依赖 config（段读取）；batch/search 依赖各自根包；所有存�
 
 ### 4.3 请求运行时上下文（rctx）
 
-请求头四字段 + `Accept-Language` → `runtimecontext.FillRuntimeContext` →
+请求头四字段 + `Accept-Language` → `enrich.Enrich` →
 `rctx.RuntimeContext`（**字段私有**）注入请求 context（单路存储）：
 
 | header | 赋值 | 取值 | 兜底 |

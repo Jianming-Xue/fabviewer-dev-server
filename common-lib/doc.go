@@ -6,8 +6,8 @@
 //
 //	接口访问层  → api 按功能分包：request（请求参数解析/校验/时间/包装）、
 //	              response（ApiResponse 统一响应 OK/Fail/VO→DTO）、
-//	              api/middleware 按处理流程点分包（accesslog/errorhandler/
-//	              recovery/runtimecontext）——仅此层可 import，Gin 依赖从这里开始
+//	              api/middleware 按处理流程点分包（observer/errorhandler/
+//	              guard/enrich）——仅此层可 import，Gin 依赖从这里开始
 //	存储层      → storage/oracle、storage/clickhouse、storage/opensearch、
 //	              storage/snowflake（ID 生成）、storage 根（PoolConfig）
 //	所有层      → common/bizerror、common/paging、common/rctx（操作者并入 RuntimeContext.User）
@@ -21,10 +21,10 @@
 //
 // REST 接口层示例：
 //
-//	r.Use(accesslog.AccessLog(log), errorhandler.ErrorHandler(log),
-//	      recovery.Recovery(log), runtimecontext.FillRuntimeContext())
+//	r.Use(observer.Observe(), errorhandler.ErrorHandler(),
+//	      guard.Guard(), enrich.Enrich())
 //	q := request.PageQuery(c)
-//	response.OKPage(c, res)
+//	response.OK(c, res)
 //
 // 定时器存储层示例（无接口层，不 import api）：
 //

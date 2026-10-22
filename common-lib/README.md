@@ -29,7 +29,7 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 | `common/logx`（日志完整工具：Init + 包级函数，见下节） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/i18n`（多语言表能力，仅依赖标准库与 `common/rctx`） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/units`（输入转换原语：int 布尔、日期/毫秒时间戳解析，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `api/request`（请求参数解析/校验/时间解析/DTO 包装）、`api/response`（统一响应体 ApiResponse 与 VO→DTO 转换）、`api/middleware/*`（accesslog / errorhandler / recovery / runtimecontext 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
+| `api/request`（请求参数解析/校验/时间解析/DTO 包装）、`api/response`（统一响应体 ApiResponse 与 VO→DTO 转换）、`api/middleware/*`（observer / errorhandler / guard / enrich 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `cmd/server`（组装全家桶：NewEngine 引擎装配 / Init 读 server 段 / NewServer+Run 优雅停机 / wire ProviderSet） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/clickhouse`（`config`/`batch` 子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
 
@@ -165,9 +165,9 @@ srv, cleanup := server.NewServer(cfg, r)
 err = server.Run(srv)             // 阻塞运行，SIGINT/SIGTERM 后返回；cleanup 优雅停机
 ```
 
-手工挂中间件（不经 NewEngine）时注册顺序固定 `accesslog.AccessLog() →
-errorhandler.ErrorHandler(opts...) → recovery.Recovery() →
-runtimecontext.FillRuntimeContext()`（AccessLog 必须在 ErrorHandler 外层，
+手工挂中间件（不经 NewEngine）时注册顺序固定 `observer.Observe() →
+errorhandler.ErrorHandler(opts...) → guard.Guard() →
+enrich.Enrich()`（AccessLog 必须在 ErrorHandler 外层，
 否则错误路径记录的 status 不正确；中间件零持有日志对象，经 logx 全局出口记录）。
 wire 装配见 `cmd/server` 包文档与 security-management 的 cmd/server。
 
@@ -255,7 +255,7 @@ check-layers:
 200**（传输层只承载送达，业务结果由 code/success 表达）。**code 是业务
 自己的错误码**：OK 默认 **1**、Fail 默认 **0**，经 WithCode 修改；
 **txId 取自 RuntimeContext 记录的事务 ID**（请求头 txId 透传优先，未携带
-时由 `runtimecontext.FillRuntimeContext` 生成兜底）；**data 由业务 handler
+时由 `enrich.Enrich` 生成兜底）；**data 由业务 handler
 指定**：single 对象或 multi 对象集合（分页 pageable 整体作为 data）。
 
 ```json
@@ -314,7 +314,7 @@ check-layers:
 
 ### 请求运行时上下文（common/rctx.RuntimeContext）
 
-`runtimecontext.FillRuntimeContext` 解析请求头五个字段
+`runtimecontext.Enrich` 解析请求头五个字段
 （txId/txTime/txName/userName + 标准头 `Accept-Language`），包装为**整个请求
 期间**可用的上下文（`rctx.RuntimeContext`，**字段私有**：WithXxx 链式赋值、
 FromXxx 取值），注入请求 context（单路存储，全链路同源）：
@@ -440,7 +440,7 @@ r.Use(errorhandler.ErrorHandler(
   直传 message，根因经 `.AttachError(err, nil)` 链上）
 - **判断**：`bizerror.IsError(err)`、`bizerror.From(err)`（errors.Is/As 全兼容）
 - **语言来源**：标准头 `Accept-Language`（q 值降序取首选并规范化），经
-  `FillRuntimeContext` 注入 `rctx.RuntimeContext.Lang`，全链路可读
+  `enrich.Enrich` 注入 `rctx.RuntimeContext.Lang`，全链路可读
 - **回退链**：请求语言精确 → 基础语言（`zh-CN` → `zh`，只收窄不放宽）→
   模块默认语言 → key 原文
 - 多模块各自字典互不感知（无全局注册、无跨模块 key 冲突）；表并发安全

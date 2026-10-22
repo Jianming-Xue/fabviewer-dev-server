@@ -1,4 +1,4 @@
-package accesslog
+package observer
 
 import (
 	"time"
@@ -9,27 +9,27 @@ import (
 	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
-type accessLogConfig struct {
+type observeConfig struct {
 	skipPaths map[string]struct{}
 }
 
 // Option 配置 AccessLog 中间件。
-type Option func(*accessLogConfig)
+type Option func(*observeConfig)
 
 // WithSkipPaths 追加不记录访问日志的路径（默认已含 /healthz、/livez、/readyz）。
 func WithSkipPaths(paths ...string) Option {
-	return func(cfg *accessLogConfig) {
+	return func(cfg *observeConfig) {
 		for _, p := range paths {
 			cfg.skipPaths[p] = struct{}{}
 		}
 	}
 }
 
-// AccessLog 记录访问日志：method/path/status/latency_ms/client_ip/
-// tx_id/tx_name/user/bytes。经全局日志出口 logx 记录（Init 落位；测试经
-// logx.SetLogger 注入），组件零持有日志对象，无 Init 时序问题。
-func AccessLog(opts ...Option) gin.HandlerFunc {
-	cfg := accessLogConfig{skipPaths: map[string]struct{}{
+// Observe 记录访问日志（访问观察者）：method/path/status/latency_ms/
+// client_ip/tx_id/tx_name/user/bytes。经全局日志出口 logx 记录（Init 落位；
+// 测试经 logx.SetLogger 注入），组件零持有日志对象，无 Init 时序问题。
+func Observe(opts ...Option) gin.HandlerFunc {
+	cfg := observeConfig{skipPaths: map[string]struct{}{
 		"/healthz": {},
 		"/livez":   {},
 		"/readyz":  {},

@@ -1,4 +1,4 @@
-package runtimecontext
+package enrich
 
 import (
 	"crypto/rand"
@@ -30,7 +30,7 @@ const (
 	HeaderAcceptLanguage = "Accept-Language"
 )
 
-// FillRuntimeContext 构建请求运行时上下文的中间件工厂：解析请求头
+// Enrich 构建请求运行时上下文的中间件工厂（上下文丰富）：解析请求头
 // txId/txTime/txName/userName 与标准头 Accept-Language（取首选语言，
 // i18n.ParseAcceptLanguage 规范化）组装为 rctx.RuntimeContext，注入
 // 请求 context（c.Request 替换）——handler 侧 rctx.GetRuntimeContext
@@ -41,7 +41,7 @@ const (
 // 如需调整只改本函数）；txTime 缺失或非法用服务器时间（经
 // units.ParseDateTime 归一）；Accept-Language 缺失/非法时 Lang 为空串
 // （i18n 翻译回退默认语言）。统一回写响应头 txId。
-func FillRuntimeContext() gin.HandlerFunc {
+func Enrich() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.GetHeader(HeaderTxID)
 		if id == "" {
