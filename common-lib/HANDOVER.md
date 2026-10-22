@@ -12,7 +12,7 @@ module 名为占位、业务方经 `replace` 本地引用；2026-10-20 起 git �
 security-management 并列，仓库级交接见上级 [HANDOVER](../HANDOVER.md)）。
 被两类业务系统 import：
 
-- **RESTful API 业务**（Gin）：用 `api/*`（reqctx/request/response 与
+- **RESTful API 业务**（Gin）：用 `api/*`（request/response 与
   `api/middleware/*` 四子包）+ 存储包
 - **内部定时器业务**（无接口层）：只用跨层包 + 存储包
 
@@ -60,8 +60,6 @@ common/i18n       Bundles 模块多语言表 + Accept-Language 解析（只提�
 common/units      输入转换原语：Bool（int：1→true 其余含 0→false）、
                   ParseDate/ParseDateTime（yyyyMMdd / yyyyMMddHHmmss → 本地
                   时间）、ParseEpochMillis（13 位毫秒时间戳）；零三方依赖
-api/reqctx        gin ↔ rctx 绑定：五请求头常量、CtxRuntimeContext key、
-                  RuntimeContextOf/TxIDOf/LangOf 取值语法糖、WithActor
 api/request       请求参数：PageQuery、Require（必填校验）、Time（时间
                   字符串→time.Time，8/13/14 位按长度识别）、Wrap[VO]
                   （DTO→service VO：字段名对齐 + 弱类型转换，布尔按
@@ -124,7 +122,7 @@ logx 依赖 config（段读取）；batch/search 依赖各自根包；所有存�
 ### 4.3 请求运行时上下文（rctx）
 
 请求头四字段 + `Accept-Language` → `runtimecontext.FillRuntimeContext` →
-`rctx.RuntimeContext`（**字段私有**）两路注入（请求 context + gin）：
+`rctx.RuntimeContext`（**字段私有**）注入请求 context（单路存储）：
 
 | header | 赋值 | 取值 | 兜底 |
 |---|---|---|---|
@@ -135,6 +133,12 @@ logx 依赖 config（段读取）；batch/search 依赖各自根包；所有存�
 | Accept-Language | WithLang | FromLang | q 值降序取首选并规范化；缺失/非法为空串 |
 
 业务层读取：`rctx.GetRuntimeContext(c.Request.Context()).FromUser()`。
+认证中间件解析出真实用户后更新操作者（替换 c.Request，全链路即见新值）：
+
+	c.Request = c.Request.WithContext(rctx.SetRuntimeContext(
+	    c.Request.Context(),
+	    rctx.GetRuntimeContext(c.Request.Context()).WithUser(userID)))
+
 定时任务入口自注入：`rctx.SetRuntimeContext(ctx, rctx.RuntimeContext{}.
 WithID(id).WithName("job"))`。
 

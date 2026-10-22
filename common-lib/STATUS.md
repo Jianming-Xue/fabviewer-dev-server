@@ -7,10 +7,9 @@
 ## 一句话状态
 
 common-lib 五项核心能力改造、API 层分包、请求参数转换、cmd/server 统一
-装配均已完成并推送；响应契约已定型 ApiResponse：HTTP 恒 200、code 为业务
-码（OK 1 / Fail 0 / WithCode 可改）、构建只有 OK/Fail 两入口、VO→DTO 出参
-转换（time→yyyyMMddHHmmss、bool→int）已落地；存储组件 Init 形态待设计；
-snowflake 仍是 WIP。
+装配均已完成并推送；响应契约已定型 ApiResponse（HTTP 恒 200、code 业务码
+OK 1/Fail 0、OK/Fail 唯一两入口）；请求上下文已收敛单路存储（reqctx 包删
+除，rctx 直取）；存储组件 Init 形态待设计；snowflake 仍是 WIP。
 
 ## 已完成（2026-10-21 会话，已提交推送）
 
@@ -20,6 +19,7 @@ snowflake 仍是 WIP。
 | 7. logx 重构 | Init(m) 唯一入口（配置结构私有、等级链 outlet→global→info 静默兜底、format json 默认/console）、console/file 双出口、滚动换 lumberjack（maxAge/compress/localTime）、包级 Debug/Info/Warn/Error（独立 log.go，caller 指向业务行）、SetLogger（原 SetDefault）、ErrNoLogComponent；**删除**：远程出口（Sink/异步缓冲/logsink 包）、自定义格式（LineEncoder/Formatter/Rec）、自研编号滚动（推翻 2026-10-20 拍板）、NewSlog（slog 适配） | 覆盖率 100% + lint 0 + security-management 真机实测（双格式日志、caller 指向 main.go 业务行） |
 | 8. 统一错误更名 | fverr → bizerror（FvError → BizError，仅更名）；i18nerr 生成器随迁，examples 双模块 + security-management 的 errors_gen 重生成零漂移 | 全库 build/vet/test |
 | 9. actortx 并入 rctx | actortx 包删除（操作者即 RuntimeContext.User，双通道合一）；RuntimeContext 字段私有化（WithXxx 链式赋值值语义 / FromXxx 取值）；审计钩子/accesslog/语法糖全量随迁 | 全库 race 测试 |
+| 16. 运行时上下文收敛单路 + 删 reqctx 包 | RuntimeContext 只存请求 context 一份（FillRuntimeContext 替换 c.Request；读取方一律 rctx.GetRuntimeContext(c.Request.Context()) 直取）；**api/reqctx 包删除**（头常量移入 runtimecontext 中间件包=生产方；RuntimeContextOf/TxIDOf/LangOf 语法糖删——rctx 直取；WithActor 删——认证中间件按文档样例手写一行 rctx.SetRuntimeContext）；消除 WithActor 更新后 gin 侧第二份存储不漂移的隐患，新增守护测试（认证更新操作者→全链路见新值）| api 覆盖率 100% + lint 0 + race 全绿 + SM 构建通过 |
 | 15. 请求时间参数处理补齐 | request.Time(name, v)（8 位日期/14 位日期时间/13 位毫秒按长度识别；空串可选参数零值；非法报 VALIDATION 带参数名与原值）+ Wrap 时间钩子（DTO 时间字符串字段 → VO time.Time 自动解析）| api 覆盖率 100% + lint 0 + race 全绿 |
 | 14. 响应契约重塑 ApiResponse | Response→ApiResponse、Contents→Data；**HTTP 恒 200，code 为业务码（OK 默认 1 / Fail 默认 0，WithCode 可改）**；构建只有 OK/Fail 两入口（write 私有，errorhandler/recovery 库内也走 Fail）；删 Created/NoContent/OKPage/NewResponse；WithStatusMap→**WithCodeMap**（模块码→业务 code，未映射 0，库内无默认业务码表，**errresp 包删除**）；新增 response.Wrap[DTO]（VO→DTO：time→yyyyMMddHHmmss（与入参同格式）、bool→int、整数→字符串，嵌套递归）+ units.FormatDateTime/BoolToInt；SM 随迁（Enabled 出入参 int、handler 统一 OK、StatusMap→CodeMap 值语义变业务码）| api 覆盖率 100%（门槛 99%）+ lint 0 + race 全绿 + SM 端到端实测（创建 code:1/enabled:1/时间紧凑格式；404 → HTTP 200 + body code:404）|
 | 13. cmd/server 统一装配 | 中间件零持有日志（三中间件去 log 参数，经 logx 全局出口；testutil.CaptureLog）；新增 cmd/server 包：NewEngine（四中间件固定顺序+/healthz，模块码表唯一必传差异）、Init（server 段：addr/mode/四超时/shutdownTimeout，段缺失全默认，gin.SetMode 副作用）、NewServer+Run（cleanup 优雅停机）、ProviderSet（wire 方案 A，engine 归业务）；common/config 增 Bind（保留已有值/出现的键覆盖）+ 时长钩子（GetSection 同步挂）；security-management 迁 wire（wire.go/providers.go/瘦身 main，SM_ADDR→server 段+security.server.addr 覆盖）；apifull 改手工全家桶示例 | 双模块 build/vet/test(race) 全绿 + lint 0（除 snowflake WIP）+ SM 端到端冒烟（healthz/创建/列表/环境变量覆盖 :8099/优雅停机链）+ apifull 冒烟（中文 404/停机日志）|
@@ -37,7 +37,7 @@ common-lib/
 │                    logx（日志完整工具：Init + 包级函数，zap + lumberjack 双出口）
 │                    i18n（多语言表能力，仅依赖 common/rctx）
 ├── cmd/i18nerr/     错误变量集合生成器（messages_<语言>.go → errors_gen.go）
-├── api/             按功能分包：reqctx（gin↔rctx 绑定）/ request（请求参数解析）/
+├── api/             按功能分包：request（请求参数解析/校验/时间/包装）/
 │                    response（ApiResponse 统一响应 + VO→DTO Wrap）/
 │                    internal/testutil（共享测试脚手架）
 ├── api/middleware/  按处理流程点分包：accesslog / errorhandler / recovery /

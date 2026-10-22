@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/fab-viewer/common-lib/api/reqctx"
+	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
 // ApiResponse 是统一响应体，成功/失败同构（五字段恒序列化），HTTP 状态码
@@ -71,7 +71,7 @@ func newApiResponse(c *gin.Context, code int, success bool, errMsg string, data 
 		Success: success,
 		ErrMsg:  errMsg,
 		Data:    data,
-		TxID:    reqctx.TxIDOf(c),
+		TxID:    rctx.GetRuntimeContext(c.Request.Context()).FromID(),
 	}
 	for _, opt := range opts {
 		opt(&r)

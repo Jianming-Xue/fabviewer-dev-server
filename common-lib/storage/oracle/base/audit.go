@@ -19,7 +19,7 @@ import (
 //
 // 审计字段由 GORM 钩子自动填充（直接用 GORM 出口也生效）：
 //   - BeforeCreate：创建/修改时间置当前时间，创建/修改人取上下文操作者
-//     （api 层经 userName 请求头或 reqctx.WithActor 注入，定时任务经 rctx.SetRuntimeContext 注入）；
+//     （api 层经 userName 请求头注入，认证中间件/定时任务经 rctx.SetRuntimeContext 注入）；
 //     已手工赋值的字段不覆盖
 //   - BeforeUpdate：修改时间置当前时间、修改人取上下文操作者
 //

@@ -9,10 +9,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"github.com/fab-viewer/common-lib/api/reqctx"
 	"github.com/fab-viewer/common-lib/api/response"
 	"github.com/fab-viewer/common-lib/common/bizerror"
 	"github.com/fab-viewer/common-lib/common/logx"
+	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
 type handlerConfig struct {
@@ -92,14 +92,14 @@ func writeError(c *gin.Context, err error, cfg handlerConfig) {
 		response.Fail(c, "resource not found")
 	case errors.Is(err, context.Canceled):
 		logx.Info("client canceled request",
-			"path", c.Request.URL.Path, "tx_id", reqctx.TxIDOf(c))
+			"path", c.Request.URL.Path, "tx_id", rctx.GetRuntimeContext(c.Request.Context()).FromID())
 		response.Fail(c, "client canceled request")
 	default:
 		logx.Error("unhandled error",
 			"err", err.Error(),
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
-			"tx_id", reqctx.TxIDOf(c))
+			"tx_id", rctx.GetRuntimeContext(c.Request.Context()).FromID())
 		response.Fail(c, "internal error")
 	}
 }
@@ -124,6 +124,6 @@ func writeBizError(c *gin.Context, e *bizerror.BizError, cfg handlerConfig) {
 		"details", fmt.Sprint(e.Details),
 		"method", c.Request.Method,
 		"path", c.Request.URL.Path,
-		"tx_id", reqctx.TxIDOf(c))
+		"tx_id", rctx.GetRuntimeContext(c.Request.Context()).FromID())
 	response.Fail(c, message, response.WithCode(code))
 }

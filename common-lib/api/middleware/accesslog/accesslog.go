@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/fab-viewer/common-lib/api/reqctx"
 	"github.com/fab-viewer/common-lib/common/logx"
+	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
 type accessLogConfig struct {
@@ -44,7 +44,7 @@ func AccessLog(opts ...Option) gin.HandlerFunc {
 		if _, skip := cfg.skipPaths[c.Request.URL.Path]; skip {
 			return
 		}
-		rc := reqctx.RuntimeContextOf(c)
+		rc := rctx.GetRuntimeContext(c.Request.Context())
 		logx.Info("access",
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,

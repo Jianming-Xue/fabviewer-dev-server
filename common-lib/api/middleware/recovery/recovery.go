@@ -6,9 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/fab-viewer/common-lib/api/reqctx"
 	"github.com/fab-viewer/common-lib/api/response"
 	"github.com/fab-viewer/common-lib/common/logx"
+	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
 // Recovery 兜住 panic：记录含事务 ID 的错误日志与堆栈，写回 500 统一响应体，
@@ -26,7 +26,7 @@ func Recovery() gin.HandlerFunc {
 				"stack", string(debug.Stack()),
 				"method", c.Request.Method,
 				"path", c.Request.URL.Path,
-				"tx_id", reqctx.TxIDOf(c),
+				"tx_id", rctx.GetRuntimeContext(c.Request.Context()).FromID(),
 			)
 			if c.Writer.Written() {
 				c.Abort()

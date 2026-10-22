@@ -13,7 +13,7 @@ import (
 
 	"github.com/fab-viewer/common-lib/api/internal/testutil"
 	"github.com/fab-viewer/common-lib/api/middleware/runtimecontext"
-	"github.com/fab-viewer/common-lib/api/reqctx"
+	"github.com/fab-viewer/common-lib/api/response"
 	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
@@ -30,11 +30,11 @@ func TestRuntimeContextFullHeaders(t *testing.T) {
 
 	reqTime := "20261019173000"
 	w := testutil.DoGetWithHeaders(r, "/echo", map[string]string{
-		reqctx.HeaderTxID:           "tx-42",
-		reqctx.HeaderTxTime:         reqTime,
-		reqctx.HeaderTxName:         "queryUsers",
-		reqctx.HeaderUserName:       "zhangsan",
-		reqctx.HeaderAcceptLanguage: "zh-CN,zh;q=0.9,en;q=0.8",
+		runtimecontext.HeaderTxID:           "tx-42",
+		runtimecontext.HeaderTxTime:         reqTime,
+		runtimecontext.HeaderTxName:         "queryUsers",
+		runtimecontext.HeaderUserName:       "zhangsan",
+		runtimecontext.HeaderAcceptLanguage: "zh-CN,zh;q=0.9,en;q=0.8",
 	})
 
 	require.Equal(t, http.StatusOK, w.Code)
@@ -45,7 +45,7 @@ func TestRuntimeContextFullHeaders(t *testing.T) {
 		WithUser("zhangsan").
 		WithLang("zh-CN"), got, "五字段完整解析进 tx 上下文")
 	assert.Equal(t, "tx-42", w.Body.String(), "请求 context 可读")
-	assert.Equal(t, "tx-42", w.Header().Get(reqctx.HeaderTxID), "响应头回写 txId")
+	assert.Equal(t, "tx-42", w.Header().Get(runtimecontext.HeaderTxID), "响应头回写 txId")
 }
 
 func TestRuntimeContextLanguage(t *testing.T) {
@@ -67,10 +67,10 @@ func TestRuntimeContextLanguage(t *testing.T) {
 			r.Use(runtimecontext.FillRuntimeContext())
 			r.GET("/e", func(c *gin.Context) {
 				got = rctx.GetRuntimeContext(c.Request.Context())
-				assert.Equal(t, got.FromLang(), reqctx.LangOf(c), "LangOf 是 RuntimeContextOf(c).Lang 的语法糖")
+				assert.Equal(t, got.FromLang(), rctx.GetRuntimeContext(c.Request.Context()).FromLang(), "handler 侧 rctx 直取请求语言")
 			})
 
-			testutil.DoGetWithHeaders(r, "/e", map[string]string{reqctx.HeaderAcceptLanguage: tt.header})
+			testutil.DoGetWithHeaders(r, "/e", map[string]string{runtimecontext.HeaderAcceptLanguage: tt.header})
 			assert.Equal(t, tt.want, got.FromLang())
 		})
 	}
@@ -80,17 +80,17 @@ func TestRuntimeContextOfInHandler(t *testing.T) {
 	r := testutil.NewTestEngine()
 	r.Use(runtimecontext.FillRuntimeContext())
 	r.GET("/gin-side", func(c *gin.Context) {
-		g := reqctx.RuntimeContextOf(c)
+		g := rctx.GetRuntimeContext(c.Request.Context())
 		assert.Equal(t, "tx-7", g.FromID())
 		assert.Equal(t, "listOrders", g.FromName())
-		c.String(http.StatusOK, reqctx.TxIDOf(c))
+		c.String(http.StatusOK, rctx.GetRuntimeContext(c.Request.Context()).FromID())
 	})
 
 	w := testutil.DoGetWithHeaders(r, "/gin-side", map[string]string{
-		reqctx.HeaderTxID:   "tx-7",
-		reqctx.HeaderTxName: "listOrders",
+		runtimecontext.HeaderTxID:   "tx-7",
+		runtimecontext.HeaderTxName: "listOrders",
 	})
-	assert.Equal(t, "tx-7", w.Body.String(), "TxIDOf 是 RuntimeContextOf(c).ID 的语法糖")
+	assert.Equal(t, "tx-7", w.Body.String(), "handler 侧 rctx 直取事务 ID")
 }
 
 func TestRuntimeContextTxTimeFallback(t *testing.T) {
@@ -111,7 +111,7 @@ func TestRuntimeContextTxTimeFallback(t *testing.T) {
 			r.GET("/e", func(c *gin.Context) { got = rctx.GetRuntimeContext(c.Request.Context()) })
 
 			testutil.DoGetWithHeaders(r, "/e", map[string]string{
-				reqctx.HeaderTxTime: tt.header,
+				runtimecontext.HeaderTxTime: tt.header,
 			})
 
 			after := time.Now().Add(time.Second)
@@ -130,7 +130,7 @@ func TestRuntimeContextUserNameToActor(t *testing.T) {
 	})
 
 	testutil.DoGetWithHeaders(r, "/audit", map[string]string{
-		reqctx.HeaderUserName: "zhangsan",
+		runtimecontext.HeaderUserName: "zhangsan",
 	})
 	assert.Equal(t, "zhangsan", actorID, "userName 即审计操作者（RuntimeContext.User）")
 
@@ -142,12 +142,12 @@ func TestRuntimeContextTxIDGenerate(t *testing.T) {
 	r := testutil.NewTestEngine()
 	r.Use(runtimecontext.FillRuntimeContext())
 	r.GET("/echo", func(c *gin.Context) {
-		c.String(http.StatusOK, reqctx.TxIDOf(c))
+		c.String(http.StatusOK, rctx.GetRuntimeContext(c.Request.Context()).FromID())
 	})
 
 	w := testutil.DoGet(r, "/echo")
 
-	id := w.Header().Get(reqctx.HeaderTxID)
+	id := w.Header().Get(runtimecontext.HeaderTxID)
 	require.NotEmpty(t, id, "响应头必须回写 txId")
 	assert.Regexp(t, txidPattern, id, "生成的 ID 为 32 字符小写 hex")
 	assert.Equal(t, id, w.Body.String(), "上下文中的 ID 与响应头一致")
@@ -160,7 +160,7 @@ func TestRuntimeContextTxIDUniqueness(t *testing.T) {
 	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	for range 100 {
-		id := testutil.DoGet(r, "/x").Header().Get(reqctx.HeaderTxID)
+		id := testutil.DoGet(r, "/x").Header().Get(runtimecontext.HeaderTxID)
 		seen[id] = struct{}{}
 	}
 	assert.Len(t, seen, 100, "100 次请求 ID 不得重复")
@@ -177,4 +177,28 @@ func TestNewTxIDFallback(t *testing.T) {
 
 	id := runtimecontext.NewTxIDForTest()
 	assert.Regexp(t, regexp.MustCompile(`^t\d+$`), id, "降级为时间戳前缀")
+}
+
+// TestRequestContextUpdateVisibleToAll 验证单路存储的收敛收益：认证中间件
+// 经 rctx 替换 c.Request 更新操作者后，全部读取方（handler、响应体 txId、
+// 访问日志）都见新值，不存在第二份存储的漂移。
+func TestRequestContextUpdateVisibleToAll(t *testing.T) {
+	r := testutil.NewTestEngine()
+	r.Use(runtimecontext.FillRuntimeContext())
+	r.Use(func(c *gin.Context) { // 模拟业务认证中间件：解析出真实用户后更新操作者
+		rc := rctx.GetRuntimeContext(c.Request.Context())
+		c.Request = c.Request.WithContext(
+			rctx.SetRuntimeContext(c.Request.Context(), rc.WithUser("u-77")))
+		c.Next()
+	})
+	var got string
+	r.GET("/audit", func(c *gin.Context) {
+		got = rctx.GetRuntimeContext(c.Request.Context()).FromUser()
+		response.OK(c, nil)
+	})
+
+	testutil.DoGetWithHeaders(r, "/audit", map[string]string{
+		runtimecontext.HeaderUserName: "zhangsan",
+	})
+	assert.Equal(t, "u-77", got, "操作者更新对 handler 生效")
 }

@@ -33,7 +33,7 @@ services/
 | 错误多语言 | 每模块自己的 `messages_<语言>.go`（key 即 code，`{0}` 位置占位符）；`go generate`（i18nerr）产出构造函数；模块字典跟包走、无全局注册 |
 | 删除确认 | 确认消息必须带实体名：模板 `{0}` + `InsertArgs(name)`（用户/角色/登录策略同理） |
 | 输入转换 | 布尔输入为 int：1→true、其余（含 0）→false、零值即默认 false（`units.Bool`）；日期两种字符串 `20261021`/`20261021100000` 与 13 位毫秒时间戳经 `common/units` 解析为**本地时间**；DTO→service VO 用 `request.Wrap[VO]`，必填校验 `request.Require` |
-| 请求上下文 | `rctx.RuntimeContext` **字段私有**（`WithID/WithTime/WithName/WithUser/WithLang` 链式赋值、`FromXxx` 取值）；中间件 `FillRuntimeContext()` 两路注入；**userName 即审计操作者**（原 actortx 包已并入删除，GORM 审计钩子自动填 CreatedBy/UpdatedBy） |
+| 请求上下文 | `rctx.RuntimeContext` **字段私有**（`WithID/WithTime/WithName/WithUser/WithLang` 链式赋值、`FromXxx` 取值）；中间件 `FillRuntimeContext()` 注入请求 context（单路，rctx 直取）；**userName 即审计操作者**（原 actortx 包已并入删除，GORM 审计钩子自动填 CreatedBy/UpdatedBy） |
 | 分页 | 请求 `paging.PageRequest`（pageIndex/pageSize，默认 **1/10**、上限 **MaxPageSize=100**）贯穿全链路；出参 `paging.Pageable` 含 **totalPage**（ceil，整除不加） |
 | 公共库定位 | **只提供能力**，译文/配置由业务服务自维护；日志为完整工具（用户拍板）；**组件自治**：组件自带 `Init(m)`，是否启用由组件自己的配置段决定 |
 
@@ -69,7 +69,7 @@ services/
 4. snowflake WIP 修复（含同毫秒序列缺陷——app 测试间歇失败的根因）
 5. 集成线补跑（本轮大改后 Oracle/CH/OS 真环境）+ 打 tag v0.6.0
 6. OpenSearch 用户搜索（domain 查询端口 + storage/opensearch 实现）
-7. 认证中间件接入（api.WithActor 已改经 rctx 派生）
+7. 认证中间件接入（更新操作者按 HANDOVER 4.3 样例替换 c.Request）
 
 ## 5. 验证命令
 

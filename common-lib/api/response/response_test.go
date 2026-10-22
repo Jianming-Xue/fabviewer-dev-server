@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fab-viewer/common-lib/api/internal/testutil"
-	"github.com/fab-viewer/common-lib/api/reqctx"
 	"github.com/fab-viewer/common-lib/api/response"
 	"github.com/fab-viewer/common-lib/common/paging"
 	"github.com/fab-viewer/common-lib/common/rctx"
@@ -71,7 +70,8 @@ func TestOKWithErrMsg(t *testing.T) {
 func TestOKCarriesTxID(t *testing.T) {
 	r := testutil.NewTestEngine()
 	r.GET("/ok", func(c *gin.Context) {
-		c.Set(reqctx.CtxRuntimeContext, rctx.RuntimeContext{}.WithID("tx-123"))
+		c.Request = c.Request.WithContext(
+			rctx.SetRuntimeContext(c.Request.Context(), rctx.RuntimeContext{}.WithID("tx-123")))
 		response.OK(c, nil)
 	})
 

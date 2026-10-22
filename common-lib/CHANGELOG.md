@@ -6,6 +6,22 @@
 
 ## [Unreleased]
 
+### Changed（Breaking：请求运行时上下文收敛单路存储，api/reqctx 包删除）
+
+- RuntimeContext 只存请求 context 一份：`FillRuntimeContext` 注入方式
+  收敛为替换 `c.Request`（删除 gin.Context 侧 `c.Set` 的第二份存储），
+  读取方一律 `rctx.GetRuntimeContext(c.Request.Context()).FromXxx()` 直取
+  （响应体 txId、访问日志、审计钩子全链路同源；认证中间件更新操作者后
+  不再有旧值漂移）
+- **`api/reqctx` 包删除**：五请求头常量移入生产方
+  `api/middleware/runtimecontext`（HeaderTxID 等）；`RuntimeContextOf/
+  TxIDOf/LangOf` 语法糖删除（rctx 直取）；`WithActor` 删除（认证中间件
+  按 HANDOVER 4.3 样例手写 `c.Request = c.Request.WithContext(
+  rctx.SetRuntimeContext(...))` 一行）
+- 迁移对照：`reqctx.TxIDOf(c)` → `rctx.GetRuntimeContext(c.Request.
+  Context()).FromID()`；`reqctx.HeaderXxx` → `runtimecontext.HeaderXxx`；
+  `reqctx.WithActor(c, id)` → 见 HANDOVER 4.3
+
 ### Changed（Breaking：统一响应体重塑为 ApiResponse）
 
 - `response.Response` → `response.ApiResponse`，字段 `Contents` → **`Data`**

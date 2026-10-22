@@ -29,7 +29,7 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 | `common/logx`（日志完整工具：Init + 包级函数，见下节） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/i18n`（多语言表能力，仅依赖标准库与 `common/rctx`） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/units`（输入转换原语：int 布尔、日期/毫秒时间戳解析，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `api/reqctx`（运行时上下文 gin 侧绑定）、`api/request`（请求参数解析/校验/DTO 包装）、`api/response`（统一响应体 ApiResponse 与 VO→DTO 转换）、`api/middleware/*`（accesslog / errorhandler / recovery / runtimecontext 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
+| `api/request`（请求参数解析/校验/时间解析/DTO 包装）、`api/response`（统一响应体 ApiResponse 与 VO→DTO 转换）、`api/middleware/*`（accesslog / errorhandler / recovery / runtimecontext 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `cmd/server`（组装全家桶：NewEngine 引擎装配 / Init 读 server 段 / NewServer+Run 优雅停机 / wire ProviderSet） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/clickhouse`（`config`/`batch` 子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
 
@@ -317,7 +317,7 @@ check-layers:
 `runtimecontext.FillRuntimeContext` 解析请求头五个字段
 （txId/txTime/txName/userName + 标准头 `Accept-Language`），包装为**整个请求
 期间**可用的上下文（`rctx.RuntimeContext`，**字段私有**：WithXxx 链式赋值、
-FromXxx 取值），两路注入（请求 context + gin）：
+FromXxx 取值），注入请求 context（单路存储，全链路同源）：
 
 | 请求头 | 赋值 / 取值 | 兜底规则 |
 |---|---|---|
