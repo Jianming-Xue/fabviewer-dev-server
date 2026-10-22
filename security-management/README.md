@@ -27,8 +27,9 @@ security-management/
 go run ./cmd/server    # 无数据库环境变量 → memory 模式（重启即失）
 ```
 
-Oracle 模式（生产）：设 `SM_DB_USER / SM_DB_PASSWORD / SM_DB_HOST /
-SM_DB_PORT / SM_DB_SERVICE / SM_ADDR`，并执行 `storage/oracle/schema.sql`。
+Oracle 模式（生产）：application.yml 写 `oracle:` 段（或部署侧配置文件经
+`security_CFG` 指向、敏感值经 `security.oracle.*` 环境变量覆盖注入），
+并执行 `storage/oracle/schema.sql`；无该段即内存模式（开发自举）。
 
 日志与配置（2026-10-21 起读仓库根 `application.yml`，appName=security）：
 console（console 格式）+ `systemlogs/security-management.log`（json 格式，

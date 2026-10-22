@@ -35,7 +35,7 @@ func InitializeServer() (*http.Server, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	mainStorage, cleanup2, err := provideStorage(logger)
+	mainStorage, cleanup2, err := provideStorage(v, logger)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

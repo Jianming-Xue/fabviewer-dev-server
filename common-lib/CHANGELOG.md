@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+### Added（存储组件 Init：oracle/opensearch 组件自治装配）
+
+- `oracle/conn.Init(m, opts...)`（读 oracle 段 → 绑定 Config（camelCase 键
+  忽略大小写对齐）→ 校验 → Open 建连探活；cleanup 承载 Close）
+- `opensearch.Init(m)`（读 opensearch 段 → 绑定 → addrs 校验 → Open 装配；
+  纯 HTTP 客户端无后台资源，cleanup 为空操作）
+- **启用开关 = 配置段的存在性**：段缺失返回 (nil, 空 cleanup, nil) 未启用、
+  回退由业务自决——环境变量覆盖只能改写文件已有叶子，不能凭空建段；
+  不进 server.ProviderSet（存储为可选件），业务组装处一行调用
+- security-management 随迁收编：provideStorage 改调 `conn.Init`（memory
+  回退保留），SM_DB_* 环境变量链与 storageMode() 废除，启用与否由
+  application.yml 的 oracle 段表达（application.yml 增注释样例）
+
 ### Removed（Breaking：ClickHouse 存储包整体移除）
 
 - `storage/clickhouse`（含 config/batch 子包）与 `examples/chbatch` 整体

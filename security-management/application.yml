@@ -19,3 +19,20 @@ log:
     path: systemlogs/security-management.log
     maxSize: 100
     maxBackups: 200
+
+# Oracle 存储（可选）：段存在即启用 oracle；无此段回退内存存储（开发自举）。
+# 生产环境在部署侧自己的 application.yml（经 security_CFG 指向）写此段，
+# 敏感值可留占位、经叶子环境变量覆盖注入（如 security.oracle.password=...）。
+# oracle:
+#   user: security
+#   password: secret          # 环境变量覆盖：security.oracle.password
+#   host: db.internal
+#   port: 1521                # 缺省 1521
+#   serviceName: FREEPDB1
+#   slowSQLMs: 200            # 慢 SQL 日志阈值（毫秒），缺省 200
+#   logLevel: warn            # SQL 日志级别 silent|error|warn|info，缺省 warn
+#   pool:                     # 连接池，均可缺省
+#     maxOpenConns: 20
+#     maxIdleConns: 5
+#     connMaxLifetime: 1h     # 时长写字符串带单位
+#     connMaxIdleTime: 10m

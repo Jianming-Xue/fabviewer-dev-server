@@ -25,7 +25,7 @@ services/
 
 | 约定 | 内容 |
 |---|---|
-| 服务配置 | 每服务自维护 `application.yml`（路径可经 `{appName}_CFG` 覆盖）；加载/读取/校验用 `common/config`（LoadConfig/GetSection[T]/Bind/Get/ValidateIs*）；叶子环境变量覆盖：`security.log.level` 式点分全路径 |
+| 服务配置 | 每服务自维护 `application.yml`（路径可经 `{appName}_CFG` 覆盖——注意变量名原样拼接为小写 `security_CFG`）；加载/读取/校验用 `common/config`（LoadConfig/GetSection[T]/Bind/Get/ValidateIs*）；叶子环境变量覆盖：`security.log.level` 式点分全路径（只能改写文件已有叶子，不能凭空建段） |
 | HTTP 装配 | 引擎/四中间件/healthz/优雅停机归 `common-lib/cmd/server`（NewEngine 传模块码表 + Init 读 server 段 + NewServer/Run）；业务经 wire `server.ProviderSet` 装配，main 只剩 InitializeServer → Run；server 段默认 :8080/release，超时写 "5s" 式字符串 |
 | 日志 | `logx.Init(cfgMap)` 唯一初始化（cmd/server 统一装配调用）；业务一律包级函数 `logx.Info/Warn/Error/Debug` 零持有；双出口 console/file（lumberjack 滚动）、等级链 outlet→global→info 静默兜底、format json 默认/console；caller 指向业务行；测试经 SetLogger 注入 |
 | 统一响应 | `response.ApiResponse` 五字段（code/success/errMsg/data/txId），**HTTP 恒 200**；构建仅 `OK`/`Fail`：code 是业务码（OK 默认 **1**、Fail 默认 **0**，WithCode 可改），OK 的 errMsg 可选、Fail 的 errMsg 必填且 data 恒 nil；data 由 handler 给（single/集合/分页 pageable）；模块错误码经 `fault.WithCodeMap` 映射业务 code；VO→DTO 出参 time→yyyyMMddHHmmss 字符串、bool→int（response.Wrap 或 units 原语） |
@@ -35,7 +35,7 @@ services/
 | 输入转换 | 布尔输入为 int：1→true、其余（含 0）→false、零值即默认 false（`units.Bool`）；日期两种字符串 `20261021`/`20261021100000` 与 13 位毫秒时间戳经 `common/units` 解析为**本地时间**；DTO→service VO 用 `request.Wrap[VO]`，必填校验 `request.Require` |
 | 请求上下文 | `rctx.RuntimeContext` **字段私有**（`WithID/WithTime/WithName/WithUser/WithLang` 链式赋值、`FromXxx` 取值）；中间件 `FillRuntimeContext()` 注入请求 context（单路，rctx 直取）；**userName 即审计操作者**（原 actortx 包已并入删除，GORM 审计钩子自动填 CreatedBy/UpdatedBy） |
 | 分页 | 请求 `paging.PageRequest`（pageIndex/pageSize，默认 **1/10**、上限 **MaxPageSize=100**）贯穿全链路；出参 `paging.Pageable` 含 **totalPage**（ceil，整除不加） |
-| 公共库定位 | **只提供能力**，译文/配置由业务服务自维护；日志为完整工具（用户拍板）；**组件自治**：组件自带 `Init(m)`，是否启用由组件自己的配置段决定 |
+| 公共库定位 | **只提供能力**，译文/配置由业务服务自维护；日志为完整工具（用户拍板）；**组件自治已全落地**：logx/oracle/opensearch 各带 `Init(m)`，配置段存在性即启用开关（段缺失返 nil 句柄、回退业务自决）；CH 已移除待环境 |
 
 ## 3. 当前进度（快照日期 2026-10-21）
 
@@ -52,24 +52,23 @@ services/
   形态——main 只剩 InitializeServer → Run；详见 common-lib/HANDOVER 第
   6 节；存储组件 Init 形态仍待设计）
 - **security-management**：用户模块纵切片完成并已随 common-lib 改造迁移
-  （application.yml + LoadConfig/Init，端到端实测通过）；角色与登录策略未开始
+  （application.yml + LoadConfig/Init，端到端实测通过；存储装配已收编
+  conn.Init，oracle 段即启用开关、无段 memory 自举）；角色与登录策略未开始
 - 已知遗留（不阻塞）：snowflake WIP（race + 3 条 lint + 覆盖率 + 同毫秒
   序列缺陷致 app 测试间歇失败）、repository 包无测试、txId 缺失行为待
   拍板（详见 common-lib/STATUS.md）
 
 ## 4. 下一步（按优先级）
 
-1. **存储组件 Init 形态设计**（cmd/server 装配的遗留项）：oracle/CH/OS
-   从 config map 初始化、enabled 判断方式
-2. **角色模块 + 用户↔角色关联（事务场景）**——驱动解决 common-lib 差异
+1. **角色模块 + 用户↔角色关联（事务场景）**——驱动解决 common-lib 差异
    点 #1（事务 context 约定，详见 security-management/README 的差异点）
-3. common-lib 补齐实战暴露的缺口：通用仓储查询（Get/List/Delete/Count）、
+2. common-lib 补齐实战暴露的缺口：通用仓储查询（Get/List/Delete/Count）、
    审计内存 helper、`NewPageable` 空值类型推断（差异点 #2/#4/#5；
    配置加载器已由 common/config 解决）
-4. snowflake WIP 修复（含同毫秒序列缺陷——app 测试间歇失败的根因）
-5. 集成线补跑（本轮大改后 Oracle/CH/OS 真环境）+ 打 tag v0.6.0
-6. OpenSearch 用户搜索（domain 查询端口 + storage/opensearch 实现）
-7. 认证中间件接入（更新操作者按 HANDOVER 4.3 样例替换 c.Request）
+3. snowflake WIP 修复（含同毫秒序列缺陷——app 测试间歇失败的根因）
+4. 集成线补跑（CH 移除与存储 Init 后 Oracle/OS 真环境）+ 打 tag v0.6.0
+5. OpenSearch 用户搜索（domain 查询端口 + storage/opensearch 实现）
+6. 认证中间件接入（更新操作者按 HANDOVER 4.3 样例替换 c.Request）
 
 ## 5. 验证命令
 

@@ -461,8 +461,27 @@ doc.go 各有完整用法示例）。要点：
 
 | 包 | 部署前提 | 关键 API |
 |---|---|---|
-| `storage/oracle`（conn/config/base/repository 四子包） | CGO + Oracle Instant Client；GORM/原生 SQL/存储过程三通道 | `conn.Open` / `db.GORM()` / `db.SQL()` / `db.CallProc` / `conn.CallProcTx` |
-| `storage/opensearch`（config/search 子包） | 无（HTTP，默认 9200；自签集群可开 Insecure） | `Open` / `search.Search[T]` / `client.Index` / `client.Get[T]` / `client.Delete` / `client.SDK()` |
+| `storage/oracle`（conn/config/base/repository 四子包） | CGO + Oracle Instant Client；GORM/原生 SQL/存储过程三通道 | `conn.Open` / `conn.Init`（组件自治装配）/ `db.GORM()` / `db.SQL()` / `db.CallProc` / `conn.CallProcTx` |
+| `storage/opensearch`（config/search 子包） | 无（HTTP，默认 9200；自签集群可开 Insecure） | `Open` / `Init`（组件自治装配）/ `search.Search[T]` / `client.Index` / `client.Get[T]` / `client.Delete` / `client.SDK()` |
+
+**组件自治装配（Init）**：oracle/opensearch 与 logx 同款约定——`Init(配置map)`
+读各自配置段（`oracle` / `opensearch`），**段缺失即未启用**（返回 nil 句柄，
+回退由业务自决；环境变量覆盖只能改写文件已有叶子，不能凭空建段）；段存在
+则绑定校验建连。不进 server.ProviderSet（存储是可选件），业务组装处一行
+调用，cleanup 接入 wire cleanup 链（oracle 承载 Close，OS 为空操作）：
+
+```yaml
+# application.yml（camelCase 键直命中，时长带单位）
+oracle:
+  user: security
+  password: secret          # 敏感值经 security.oracle.password 环境变量覆盖注入
+  host: db.internal
+  serviceName: FREEPDB1
+  pool: {connMaxLifetime: 1h}
+opensearch:
+  addrs: [https://os1:9200]
+  insecure: false
+```
 
 ### 事务使用约定（Oracle）
 

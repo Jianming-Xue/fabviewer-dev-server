@@ -1,8 +1,8 @@
 // Command server 是 security-management 的组装根：wire 编译期装配全部
 // 组件（配置 → 日志 → server 段 → 存储 → 服务 → 引擎/路由 → http.Server），
-// main 只做 InitializeServer → Run。存储实现按环境选择：SM_DB_USER 等
-// 数据库环境变量齐全 → storage/oracle（生产）；缺省 → storage/memory
-// （开发自举，重启即失）。
+// main 只做 InitializeServer → Run。存储实现由配置决定：application.yml
+// 含 oracle 段 → storage/oracle（生产）；无段 → storage/memory（开发自举，
+// 重启即失，见 application.yml 的 oracle 段样例）。
 //
 // 启动：
 //

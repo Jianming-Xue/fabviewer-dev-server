@@ -7,15 +7,16 @@
 ## 一句话状态
 
 common-lib 五项核心能力改造、API 层分包、请求参数转换、cmd/server 统一
-装配均已完成并推送；响应契约已定型 ApiResponse（HTTP 恒 200、code 为字符串业务码与
+装配、存储组件 Init（oracle/OS，段存在性即启用开关）均已完成并推送；响应契约已定型 ApiResponse（HTTP 恒 200、code 为字符串业务码与
 bizerror.Code 同一命名空间：OK "OK"/Fail "FAIL"/BizError 透传，OK/Fail
 唯一两入口）；请求上下文已收敛单路存储（reqctx 包删
-除，rctx 直取）；四中间件已按业务方拍板定名 observer/fault/guard/enrich；存储组件 Init 形态待设计；snowflake 仍是 WIP。
+除，rctx 直取）；四中间件已按业务方拍板定名 observer/fault/guard/enrich；snowflake 仍是 WIP。
 
 ## 已完成（2026-10-21 会话，已提交推送）
 
 | 轮次 | 内容 | 验证 |
 |---|---|---|
+| 23. 存储组件 Init（oracle/OS） | `conn.Init(m, opts...)`/`opensearch.Init(m)` 组件自治装配（读段绑定校验建连；段缺失即未启用返 nil 句柄；oracle cleanup=Close、OS 空操作）；不进 ProviderSet；SM provideStorage 收编为薄壳（SM_DB_* 链废除，oracle 段即开关）、application.yml 加注释样例 | conn/OS 单测全绿（mock 驱动全链路）+ SM build/test 全绿 + 冒烟三条路径（memory 自举建查、缺字段 VALIDATION_ERROR 建连前拦截、完整段真建连探活） |
 | 22. ClickHouse 存储包移除 | storage/clickhouse（config/batch）+ examples/chbatch 整体删除（业务方拍板：暂无 CH 环境）；go.mod 去 clickhouse-go；compose/DSN/depguard/文档随迁 | build/vet/test 全绿 + lint 除 snowflake 存量外零告警 |
 | 21. i18n 模块码包重构（xxxcodes） | i18nerr 产物瘦身为码常量 + `NewError`/`NewMessage` 两入口（删 ErrorCode 句柄、模块级 New、每 key 便捷函数）；码包更名：commonerrors→**commoncodes**、apifull usererrors/ordererrors→usercodes/ordercodes、SM usererrors→usercodes（包名即码命名空间，引用形如 usercodes.UserNotFound；git mv 保留历史）；产物 errors_gen.go→messages_gen.go；`i18n` 新增导出 `InsertArgs`（模板插参，调用点自换）；修复产物文件名与输入模式同形被误解析的缺陷；api 层 4 处/apifull 4 处/SM 6 处调用点随迁；README 状态码表与 WithCodeMap 残留、i18n/doc.go、cmd/server/doc.go 腐化文案随迁清理 | 全库 build/vet/test 全绿 + lint（除 snowflake WIP）+ SM 构建测试全绿 + apifull 冒烟（见下） |
 | 6. 配置加载 `common/config` | LoadConfig（{appName}_CFG→application.yml；yml/yaml/json；叶子环境变量覆盖 security.log.level 式，值 string 原样进 map）、GetSection[T]（mapstructure/v2 绑定，WeaklyTypedInput）、Get、ValidateIsEmpty/IsNumber/IsBoolean（宽松判断）；新增依赖 mapstructure/v2，yaml.v3 转 direct | 覆盖率 100% + lint 0 |
@@ -53,8 +54,8 @@ common-lib/
 ├── storage/
 │   ├── pool.go      PoolConfig
 │   ├── snowflake/   点分隔雪花 ID（WIP，见已知问题）
-│   ├── oracle/      根=向导；conn / config / base / repository
-│   └── opensearch/  根=Client/Open/Index/Get/Delete；config / search（logsink 已删）
+│   ├── oracle/      根=向导；conn（Open+Init 组件自治装配）/ config / base / repository
+│   └── opensearch/  根=Client/Open/Index/Get/Delete+Init 装配；config / search（logsink 已删）
 └── examples/        apifull / oracleproc / ossearch（兼作编译烟雾测试）
 ```
 
@@ -70,9 +71,8 @@ common-lib/
 - **txId 缺失行为**：header 未带 txId 时当前为「crypto/rand 生成 32 位 hex
   兜底」。规则待业务方拍板，改动点集中在 `api/middleware/enrich/enrich.go`
   一处（注释已标注）
-- **存储组件 Init 形态**（cmd/server 拍板项仅剩此条）：各存储组件从
-  config map 初始化的配置段与 enabled 判断方式（组件自治已定；四中间件
-  注册方式与 server 段已于 2026-10-21 拍板落地，详见 HANDOVER 第 6 节）
+- ~~存储组件 Init 形态~~：已于 2026-10-22 落地（oracle/opensearch，段
+  存在性即启用开关；CH 已移除，待环境就绪后重新引入）
 
 ## 已知问题
 

@@ -26,17 +26,18 @@ security-management 并列，仓库级交接见上级 [HANDOVER](../HANDOVER.md)
 2. **跨层会合点**：`api` 与 `storage` 互不感知，只在小包相会——
    `bizerror`（统一业务错误 BizError）、`paging`（分页对象）、`rctx`
    （运行时上下文，含审计操作者）。需要两边共享的概念，加包而不是加依赖。
-3. **DTO/VO/PO 对象流转**：DTO 只在 api 层进出；VO 是 storage 对上的唯一边界
+2. **DTO/VO/PO 对象流转**：DTO 只在 api 层进出；VO 是 storage 对上的唯一边界
    类型（禁止 gorm/ch tag）；PO 未导出锁死在业务存储包内（编译器强制）。
    详见 README「对象层约定」。
 4. **配置与装配分离**：`*/config` 子包是纯数据+校验；SDK Options/DSN 之类
    的装配逻辑在连接包。**业务服务自维护 application.yml**，加载/读取/校验
    能力在 `common/config`（只提供能力，不内置任何配置项）。
-5. **组件自治**（2026-10-21 拍板，进行中）：每个组件（logx 已完成、存储
-   包待做）自己提供「从 config map 初始化」的方法（`Init(m)`），是否启用
-   由组件按自己的配置段判断（enabled 开关或段缺失，组件自己定）；
-   `cmd/server` 只负责依次调用（统一编排入口，与 wire 编译期装配，
-   详见第 6 节）。
+5. **组件自治**（2026-10-21 拍板，已落地）：每个组件（logx、oracle、
+   opensearch）自己提供「从 config map 初始化」的方法（`Init(m)`），
+   是否启用由配置段的存在性决定（段缺失即未启用、返回 nil 句柄，回退
+   由业务自决——环境变量覆盖只能改写已有叶子，不能凭空建段）；
+   存储组件不进 server.ProviderSet（可选件），业务组装处一行调用
+   （SM 的 provideStorage 即样板，详见第 6 节）。
 6. **逃生舱模式**：包装层不遮蔽 SDK——`opensearch.SDK()/NewFromAPI/DoSearch`、
    `oracle DB.GORM()/SQL()`。
 
@@ -79,11 +80,13 @@ api/handlers     公共 handler 集合（按 handler 一个文件追加）：rea
                   探活（/api/readyz，NewEngine 内置注册，OK 无数据）
 cmd/server        组装全家桶：NewEngine（引擎+四中间件+/healthz+/api/readyz）、
                   Init（server 段）、NewServer+Run（优雅停机）、ProviderSet（wire）
-storage/oracle/conn        Open、DB 三通道（GORM/SQL/存储过程）、Cursor、driverAdapter
+storage/oracle/conn        Open、DB 三通道（GORM/SQL/存储过程）、Cursor、driverAdapter、
+                  Init(m) 组件自治装配（读 oracle 段，段缺失即未启用）
 storage/oracle/config      Config/WithDefaults/Validate/BuildDSN
 storage/oracle/base        BasePO 审计基类（GORM 钩子自动填 CreatedBy 等，取 rctx.User）
 storage/oracle/repository  Repository[T]（雪花 ID + 审计落库）
-storage/opensearch(+config/search)  Open/Client/Index/Get/Delete；Search[T]（logsink 已删）
+storage/opensearch(+config/search)  Open/Client/Index/Get/Delete；Search[T]；Init(m)
+                  组件自治装配（读 opensearch 段，段缺失即未启用）
 storage/snowflake  点分隔雪花 ID（"<Unix毫秒>.<节点>.<序列>"；WIP，见 STATUS）
 storage/pool.go    PoolConfig 连接池配置
 cmd/i18nerr        模块码包生成器（messages_<语言>.go → messages_gen.go：
@@ -238,32 +241,32 @@ make integration  # 集成测试：先 docker compose -f docker-compose.test.yml
   `readHeaderTimeout`（默认 5s）/`readTimeout`/`writeTimeout`（30s）/
   `idleTimeout`（120s）/`shutdownTimeout`（10s）——时长一律写字符串带
   单位（"5s"，经 config.Bind 的时长钩子转换），0 表示禁用
-- logx 已按组件自治形态完成；**存储组件的 Init 形态待设计拍板**（oracle/
-  CH/OS 从 config map 初始化、enabled 判断方式），security-management 的
-  provideStorage 是业务侧临时形态
+- 存储组件 Init 已按组件自治形态落地（oracle：`conn.Init(m, opts...)`
+  读 oracle 段绑定校验建连、cleanup 承载 Close；opensearch：`Init(m)`
+  装配客户端、cleanup 空操作——纯 HTTP 无后台资源；CH 已随包移除）。
+  security-management 的 provideStorage 已收编为调 `conn.Init` 一层薄壳
+  （含 memory 回退判断），SM_DB_* 环境变量链废除、启用与否由配置文件
+  oracle 段表达
 
 ## 7. 未完成事项（按优先级）
 
-1. **存储组件 Init 形态设计**（第 6 节遗留）：oracle/CH/OS 从 config map
-   初始化、enabled 判断方式；security-management 的 provideStorage 是
-   业务侧临时形态，设计后收编进组件包
-2. **实战缺口补齐**（security-management 检验发现）：
+1. **实战缺口补齐**（security-management 检验发现）：
    - 事务 context 约定（conn 层 NewTxContext/FromTxContext，用户↔角色
      关联场景急需）
    - 通用仓储查询缺失（Repository[T] 只有 Create/Update）
    - 审计内存场景 helper、`NewPageable` 空值类型推断（差异点 #4/#5）
-3. **snowflake WIP 修复**：测试 race（nowFn 改 atomic）+ 3 条 lint + 覆盖率
+2. **snowflake WIP 修复**：测试 race（nowFn 改 atomic）+ 3 条 lint + 覆盖率
    + **同毫秒序列缺陷**（同毫秒内序列恒为 0 → ID 重复；security-management
    的 app 测试间歇失败实证——2026-10-21 复测 3 跑 2 败近乎必现，快机器
    上两创建稳定同毫秒，见 STATUS）
-4. **repository 测试**：baseOf 校验可单测；Create/Update 落库用 sqlmock 或
+3. **repository 测试**：baseOf 校验可单测；Create/Update 落库用 sqlmock 或
    进集成线
-5. **txId 缺失行为拍板**：业务方定规则后改 `runtimecontext.go` 一处
-6. **集成线补跑**：本轮 API 分包/参数转换/cmd/server 大改后 Oracle/CH/OS
+4. **txId 缺失行为拍板**：业务方定规则后改 `runtimecontext.go` 一处
+5. **集成线补跑**：本轮 i18n 码包重构、存储组件 Init、CH 移除后 Oracle/OS
    真环境链路建议跑 `make integration`
-7. **打 tag v0.6.0 锁基线**：Unreleased 已积累多轮 breaking，首个新业务
+6. **打 tag v0.6.0 锁基线**：Unreleased 已积累多轮 breaking，首个新业务
    接入前建议打 tag 并全量验证
-8. （远期）module 名迁移到真实托管路径：改 module 名 + 业务仓批量替换
+7. （远期）module 名迁移到真实托管路径：改 module 名 + 业务仓批量替换
    import + 删 replace，公共 API 零变化
 
 ## 8. 约定速记（评审必查）
