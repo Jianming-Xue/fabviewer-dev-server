@@ -69,7 +69,7 @@ func TestFullStack(t *testing.T) {
 			TxID    string `json:"txId"`
 		}
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
-		assert.Equal(t, "FAIL", b.Code, "Guard 走 Fail 默认业务码 FAIL")
+		assert.Equal(t, "InternalError", b.Code, "Guard 走公共错误 InternalError")
 		assert.False(t, b.Success)
 		assert.NotEmpty(t, b.TxID, "Recovery 写回的统一体含 txId")
 	})

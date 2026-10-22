@@ -70,10 +70,10 @@ func TestNewEngine(t *testing.T) {
 		assert.Contains(t, w.Body.String(), assert.AnError.Error(), "err 原文直出响应体")
 	})
 
-	t.Run("panic 兜底 code FAIL 且响应头带 txId", func(t *testing.T) {
+	t.Run("panic 兜底公共错误 InternalError 且响应头带 txId", func(t *testing.T) {
 		w := doGet(r, "/boom")
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Body.String(), `"code":"FAIL"`)
+		assert.Contains(t, w.Body.String(), `"code":"InternalError"`)
 		assert.NotEmpty(t, w.Header().Get("txId"), "enrich 中间件已入链")
 	})
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/fab-viewer/common-lib/common/commonerrors"
 	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
@@ -58,13 +59,17 @@ func OK(c *gin.Context, data any, opts ...Option) {
 	write(c, r)
 }
 
-// Fail 写回失败响应：code 默认 0、success 恒 false、data 恒 nil，errMsg
-// 必填（空串时兜底 "internal error"）；code 可经 WithCode 换成业务自己的
-// 错误码。常规业务错误走 c.Error(err) 交由 errorhandler 统一处理（按
-// WithCodeMap 映射模块码）；本方法用于不经中间件的轻量场景。
+// Fail 写回失败响应：code 默认 "FAIL"、success 恒 false、data 恒 nil，
+// errMsg 必填（空串时兜底公共错误 InternalError，commonerrors 字典按请求
+// 语言翻译，code 亦用 InternalError）；code 可经 WithCode 换成业务自己的
+// 错误码（fault 处理 BizError 时即透传其 code）。常规业务错误走
+// c.Error(err) 交由 fault 统一处理；本方法用于不经中间件的轻量场景。
 func Fail(c *gin.Context, errMsg string, opts ...Option) {
 	if errMsg == "" {
-		errMsg = "internal error"
+		e := commonerrors.NewInternalError(c.Request.Context())
+		errMsg = e.Message
+		// 兜底码在前，调用方 opts 在后可覆盖
+		opts = append([]Option{WithCode(string(e.Code))}, opts...)
 	}
 	r := newApiResponse(c, CodeFail, false, errMsg, nil, opts)
 	write(c, r)

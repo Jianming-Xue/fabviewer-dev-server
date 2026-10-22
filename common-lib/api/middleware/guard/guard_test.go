@@ -29,10 +29,10 @@ func TestGuardPanickingHandler(t *testing.T) {
 		Data    any    `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.Equal(t, "FAIL", body.Code, "Fail 默认业务码 FAIL")
+	assert.Equal(t, "InternalError", body.Code, "panic 路径走公共错误 InternalError")
 	assert.Nil(t, body.Data)
 	assert.False(t, body.Success)
-	assert.Equal(t, "internal error", body.ErrMsg, "不向调用方泄漏 panic 内容")
+	assert.Equal(t, "internal error", body.ErrMsg, "默认英文；不向调用方泄漏 panic 内容")
 
 	records := log.Snapshot()
 	require.Len(t, records, 1)

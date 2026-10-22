@@ -101,9 +101,9 @@ func TestFail(t *testing.T) {
 			wantErrMsg: "user not found",
 		},
 		{
-			name:       "空 errMsg 兜底 internal error",
+			name:       "空 errMsg 兜底公共错误 InternalError",
 			errMsg:     "",
-			wantCode:   "FAIL",
+			wantCode:   "InternalError",
 			wantErrMsg: "internal error",
 		},
 	}

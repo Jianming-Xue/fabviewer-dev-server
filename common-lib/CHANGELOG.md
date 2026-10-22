@@ -21,6 +21,11 @@
   `context.Context`（构造错误需按请求语言查公共字典）；错误从
   VALIDATION 硬编码英文改为公共错误码 ParameterRequired/InvalidTime
   （中英文按请求语言）
+- api 层剩余硬编码错误文案随迁 commonerrors：`response.Fail` 空串兜底
+  改公共错误 InternalError（按请求语言翻译，code 亦用 InternalError，
+  调用方 WithCode 可覆盖）；`guard.Guard` panic 路径同样走 InternalError
+  （原 code "FAIL"→"InternalError"）；fault 的非 BizError errMsg 直出
+  err.Error() 原文行为不变（业务方拍板）
 
 ### Changed（Breaking：code 统一为字符串，与 bizerror.Code 同一命名空间）
 
