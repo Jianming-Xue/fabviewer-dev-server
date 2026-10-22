@@ -97,6 +97,16 @@ linters:
             - "$gostd"
             - "github.com/stretchr/testify"
             - "github.com/fab-viewer/common-lib/common/rctx"
+        # commonerrors 公共错误字典：仅依赖 i18n（查模板）与 bizerror。
+        commonerrors-dict:
+          listMode: strict
+          files:
+            - "**/common/commonerrors/**"
+          allow:
+            - "$gostd"
+            - "github.com/stretchr/testify"
+            - "github.com/fab-viewer/common-lib/common/i18n"
+            - "github.com/fab-viewer/common-lib/common/bizerror"
         # api 包禁止依赖存储（deny 为前缀匹配，可命中全部子包）
         api-no-storage:
           files:
@@ -143,7 +153,7 @@ linters:
           - errcheck
       # 外部测试包（xxx_test）需要 import 被测包自身，depguard strict
       # 白名单无法表达自引用，测试文件豁免。
-      - path: common/(i18n|logx|units)/.+_test\.go
+      - path: common/(i18n|logx|units|commonerrors)/.+_test\.go
         linters:
           - depguard
       - path: examples/

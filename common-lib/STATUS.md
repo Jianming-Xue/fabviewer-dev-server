@@ -21,6 +21,7 @@ bizerror.Code 同一命名空间：OK "OK"/Fail "FAIL"/BizError 透传，OK/Fail
 | 8. 统一错误更名 | fverr → bizerror（FvError → BizError，仅更名）；i18nerr 生成器随迁，examples 双模块 + security-management 的 errors_gen 重生成零漂移 | 全库 build/vet/test |
 | 9. actortx 并入 rctx | actortx 包删除（操作者即 RuntimeContext.User，双通道合一）；RuntimeContext 字段私有化（WithXxx 链式赋值值语义 / FromXxx 取值）；审计钩子/accesslog/语法糖全量随迁 | 全库 race 测试 |
 | 16. 运行时上下文收敛单路 + 删 reqctx 包 | RuntimeContext 只存请求 context 一份（FillRuntimeContext 替换 c.Request；读取方一律 rctx.GetRuntimeContext(c.Request.Context()) 直取）；**api/reqctx 包删除**（头常量移入 runtimecontext 中间件包=生产方；RuntimeContextOf/TxIDOf/LangOf 语法糖删——rctx 直取；WithActor 删——认证中间件按文档样例手写一行 rctx.SetRuntimeContext）；消除 WithActor 更新后 gin 侧第二份存储不漂移的隐患，新增守护测试（认证更新操作者→全链路见新值）| api 覆盖率 100% + lint 0 + race 全绿 + SM 构建通过 |
+| 20. readyz 探活 + commonerrors 公共错误字典 | api/handlers 包（公共 handler 落点，按文件追加）：Readyz（/api/readyz，OK 无数据，NewEngine 内置注册，observer 默认 skip）；common/commonerrors（中英文默认英文，key 即响应体业务 code）：ParameterRequired/InvalidParameter/InvalidTime/InternalError，i18nerr 生成；request.Require/Time 随迁（签名加 ctx，错误走公共字典按请求语言翻译）| 覆盖率 99.2% + lint 0 + race 全绿 + SM 通过 |
 | 19. code 统一字符串 | ApiResponse.Code int→**string**（与 bizerror.Code 同一命名空间）：OK 默认 **"OK"**、Fail 默认 **"FAIL"**；fault 处理 BizError 时 **code 直接透传**（WithCodeMap 机制删除）、非 BizError 默认 "FAIL"；server.NewEngine 删 codeMap 参数、SM usererrors.CodeMap() 删除、模块码零注册零映射 | api 覆盖率 100% + lint 0 + race 全绿 + SM 3 连过 + 冒烟实测（"code":"OK" / "code":"UserNotFound" 透传）|
 | 18. errorhandler→fault 职责简化 | 统一错误出口更名 fault：**不管 BizError 与否一律记失败日志+调用栈**（bizCode/details 进日志留痕），经 response.Fail 写回——**errMsg 直取错误消息零翻译**（BizError 取 Message，其余 err.Error() 原文直出响应体）；删哨兵翻译（gorm→404/canceled→499/其他→internal error 固定文案）与 WithMessageFunc 出口改写；WithCodeMap 保留 |
 | 17. 四中间件更名（业务方拍板） | accesslog→**observer**（Observe，访问观察）、recovery→**guard**（Guard，守护兜底）、runtimecontext→**enrich**（Enrich，上下文丰富；用户输入 Erich 按 Enrich 语义落地）——包名/函数/文档全量随迁，目录 git mv 保留历史 | api 覆盖率 100% + lint 0 + race 全绿 + SM 构建通过 |
@@ -45,7 +46,7 @@ common-lib/
 │                    response（ApiResponse 统一响应 + VO→DTO Wrap）/
 │                    internal/testutil（共享测试脚手架）
 ├── api/middleware/  按处理流程点分包：observer / fault / guard /
-│                    enrich / fault（根包仅注册顺序契约+全栈测试）
+│                    enrich / fault（根包仅顺序契约+全栈测试）/ handlers（公共 handler）
 ├── storage/
 │   ├── pool.go      PoolConfig
 │   ├── snowflake/   点分隔雪花 ID（WIP，见已知问题）

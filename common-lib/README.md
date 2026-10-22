@@ -27,9 +27,9 @@ fab-viewer 体系的 Go 公共库：集中提供**存储访问**（Oracle / Clic
 | `common/bizerror` / `common/paging` / `common/rctx`（跨层，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/config`（配置加载：application.yml + 环境变量覆盖 + 段绑定） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/logx`（日志完整工具：Init + 包级函数，见下节） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `common/i18n`（多语言表能力，仅依赖标准库与 `common/rctx`） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `common/i18n`（多语言表能力，仅依赖标准库与 `common/rctx`）、`common/commonerrors`（公共错误字典：中英文、默认英文，key 即响应体业务 code） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `common/units`（输入转换原语：int 布尔、日期/毫秒时间戳解析，零三方依赖） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `api/request`（请求参数解析/校验/时间解析/DTO 包装）、`api/response`（统一响应体 ApiResponse 与 VO→DTO 转换）、`api/middleware/*`（observer / fault / guard / enrich 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
+| `api/request`（请求参数解析/校验/时间解析/DTO 包装）、`api/response`（统一响应体 ApiResponse 与 VO→DTO 转换）、`api/handlers`（公共 handler：readyz 就绪探活）、`api/middleware/*`（observer / fault / guard / enrich 四子包） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `cmd/server`（组装全家桶：NewEngine 引擎装配 / Init 读 server 段 / NewServer+Run 优雅停机 / wire ProviderSet） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
 | `storage/oracle`（`conn`/`config`/`base`/`repository` 四子包）/ `storage/clickhouse`（`config`/`batch` 子包）/ `storage/opensearch`（`config`/`search` 子包）/ `storage/snowflake`（ID 生成） | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
 
@@ -304,14 +304,16 @@ check-layers:
 | 日期时间 | 字符串 `20261021100000`（yyyyMMddHHmmss，与 txTime 头同族） | `units.ParseDateTime(s)` → 本地时间 |
 | 毫秒时间戳 | 13 位数字串 `1761012000000` | `units.ParseEpochMillis(s)` → 本地时间 |
 
-- **时间参数解析**：`t, err := request.Time("createdAt", c.Query("createdAt"))`
+- **时间参数解析**：`t, err := request.Time(ctx, "createdAt", c.Query("createdAt"))`（非法
+  报公共错误 `InvalidTime`）
   ——8 位日期 / 14 位日期时间 / 13 位毫秒按长度识别；空串按可选参数返回
   零值；非法格式报 VALIDATION（errMsg 带参数名）
 - **DTO → service VO**：`request.Wrap[VO](dto)`——字段名忽略大小写对齐自动拷贝
   + 弱类型转换（int → bool 按 units.Bool 约定、时间字符串字段自动解析为
   time.Time）；需要组装/裁剪的转换业务手写
-- **必填字符串校验**：`name, err := request.Require("username", c.Query("username"))`
-  ——去首尾空白，空则 VALIDATION 错误（errMsg 携带参数名，走 fault 出 200 + code 0）
+- **必填字符串校验**：`name, err := request.Require(ctx, "username", c.Query("username"))`
+  ——去首尾空白，空则公共错误 `ParameterRequired`（commonerrors 字典按请求语言翻译；
+  fault 透传 code，HTTP 200）
 
 ### 请求运行时上下文（common/rctx.RuntimeContext）
 

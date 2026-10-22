@@ -6,6 +6,22 @@
 
 ## [Unreleased]
 
+### Added（readyz 就绪探活 handler + commonerrors 公共错误字典）
+
+- 新增 `api/handlers` 包（公共 handler 集合，按 handler 一个文件追加）：
+  `Readyz`（GET **/api/readyz**，server.NewEngine 内置注册、访问日志默认
+  跳过）：恒返回无数据的 OK 响应体（`{"code":"OK",...,"data":null}`），
+  真实依赖就绪判定后续在此扩展
+- 新增 `common/commonerrors` 公共错误字典（中英文，**默认英文**；key 即
+  响应体业务 code，fault 直接透传）：`ParameterRequired`/`InvalidParameter`/
+  `InvalidTime`/`InternalError`；与模块 errors 同款 i18nerr 模式生成
+  （Code 常量 + ErrorCode 字典句柄 + New 构造函数），业务服务报错时可直接
+  引用组织错误（depguard 新增规则：仅依赖 i18n 与 bizerror）
+- **Breaking**：`request.Require`/`request.Time` 签名增加首参
+  `context.Context`（构造错误需按请求语言查公共字典）；错误从
+  VALIDATION 硬编码英文改为公共错误码 ParameterRequired/InvalidTime
+  （中英文按请求语言）
+
 ### Changed（Breaking：code 统一为字符串，与 bizerror.Code 同一命名空间）
 
 - `ApiResponse.Code` int → **string**：`OK` 默认 **"OK"**、`Fail` 默认

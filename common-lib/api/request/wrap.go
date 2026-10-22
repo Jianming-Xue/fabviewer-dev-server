@@ -1,6 +1,7 @@
 package request
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -9,7 +10,7 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 
-	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commonerrors"
 	"github.com/fab-viewer/common-lib/common/units"
 )
 
@@ -67,12 +68,13 @@ func Wrap[VO any](src any) (VO, error) {
 	return vo, nil
 }
 
-// Require 校验必填字符串参数：去首尾空白后为空串时返回 VALIDATION 错误
-// （errMsg 携带参数名），否则返回去空白后的值。
-func Require(name, v string) (string, error) {
+// Require 校验必填字符串参数：去首尾空白后为空串时返回公共错误
+// ParameterRequired（commonerrors 字典按请求语言翻译，errMsg 携带参数名），
+// 否则返回去空白后的值。
+func Require(ctx context.Context, name, v string) (string, error) {
 	v = strings.TrimSpace(v)
 	if v == "" {
-		return "", bizerror.NewError(bizerror.CodeValidation, "parameter {0} is required", name)
+		return "", commonerrors.NewParameterRequired(ctx).InsertArgs(name)
 	}
 	return v, nil
 }

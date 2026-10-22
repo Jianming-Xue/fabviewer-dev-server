@@ -56,7 +56,11 @@ common/logx       日志完整工具：Init(m) 唯一初始化（配置结构私
 common/rctx       RuntimeContext（五字段私有，WithXxx 链式赋值/FromXxx 取值；
                   User 即审计操作者——原 actortx 包已并入删除）
 common/i18n       Bundles 模块多语言表 + Accept-Language 解析（只提供能力，
-                  译文业务每模块自维护；仅依赖 rctx）
+                  业务译文每模块自维护；仅依赖 rctx）
+common/commonerrors 公共错误字典（中英文，默认英文；key 即响应体业务
+                  code，fault 直接透传）：ParameterRequired/InvalidParameter/
+                  InvalidTime/InternalError；request 校验路径与业务服务可直接
+                  引用组织错误；i18nerr 同款模式生成
 common/units      输入转换原语：Bool（int：1→true 其余含 0→false）、
                   ParseDate/ParseDateTime（yyyyMMdd / yyyyMMddHHmmss → 本地
                   时间）、ParseEpochMillis（13 位毫秒时间戳）；零三方依赖
@@ -71,8 +75,10 @@ api/response      统一响应体 ApiResponse（code/success/errMsg/data/txId）
 api/middleware    按处理流程点分包（根包仅承载注册顺序契约与全栈测试）：
                   observer → fault → guard → enrich
                   （顺序固定；三日志中间件零持有日志对象，经 logx 全局出口）
-cmd/server        组装全家桶：NewEngine（引擎+四中间件+/healthz）、Init
-                  （server 段）、NewServer+Run（优雅停机）、ProviderSet（wire）
+api/handlers     公共 handler 集合（按 handler 一个文件追加）：readyz 就绪
+                  探活（/api/readyz，NewEngine 内置注册，OK 无数据）
+cmd/server        组装全家桶：NewEngine（引擎+四中间件+/healthz+/api/readyz）、
+                  Init（server 段）、NewServer+Run（优雅停机）、ProviderSet（wire）
 storage/oracle/conn        Open、DB 三通道（GORM/SQL/存储过程）、Cursor、driverAdapter
 storage/oracle/config      Config/WithDefaults/Validate/BuildDSN
 storage/oracle/base        BasePO 审计基类（GORM 钩子自动填 CreatedBy 等，取 rctx.User）

@@ -37,6 +37,20 @@ func TestNewEngine(t *testing.T) {
 		assert.Equal(t, "ok", w.Body.String())
 	})
 
+	t.Run("内置 /api/readyz 就绪探活：OK 无数据", func(t *testing.T) {
+		w := doGet(r, "/api/readyz")
+		require.Equal(t, http.StatusOK, w.Code)
+		var b struct {
+			Code string `json:"code"`
+			Data any    `json:"data"`
+			TxID string `json:"txId"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &b))
+		assert.Equal(t, "OK", b.Code)
+		assert.Nil(t, b.Data, "不带任何数据")
+		assert.NotEmpty(t, b.TxID)
+	})
+
 	t.Run("BizError 的 code 透传进响应体（HTTP 恒 200）", func(t *testing.T) {
 		w := doGet(r, "/disabled")
 		require.Equal(t, http.StatusOK, w.Code)

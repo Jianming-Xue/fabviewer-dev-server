@@ -16,7 +16,8 @@ type observeConfig struct {
 // Option 配置 AccessLog 中间件。
 type Option func(*observeConfig)
 
-// WithSkipPaths 追加不记录访问日志的路径（默认已含 /healthz、/livez、/readyz）。
+// WithSkipPaths 追加不记录访问日志的路径（默认已含 /healthz、/livez、
+// /readyz、/api/readyz）。
 func WithSkipPaths(paths ...string) Option {
 	return func(cfg *observeConfig) {
 		for _, p := range paths {
@@ -30,9 +31,10 @@ func WithSkipPaths(paths ...string) Option {
 // 测试经 logx.SetLogger 注入），组件零持有日志对象，无 Init 时序问题。
 func Observe(opts ...Option) gin.HandlerFunc {
 	cfg := observeConfig{skipPaths: map[string]struct{}{
-		"/healthz": {},
-		"/livez":   {},
-		"/readyz":  {},
+		"/healthz":    {},
+		"/livez":      {},
+		"/readyz":     {},
+		"/api/readyz": {},
 	}}
 	for _, opt := range opts {
 		opt(&cfg)

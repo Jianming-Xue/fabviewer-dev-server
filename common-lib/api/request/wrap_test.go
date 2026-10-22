@@ -6,8 +6,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"context"
+
 	"github.com/fab-viewer/common-lib/api/request"
 	"github.com/fab-viewer/common-lib/common/bizerror"
+	"github.com/fab-viewer/common-lib/common/commonerrors"
+	"github.com/fab-viewer/common-lib/common/rctx"
 )
 
 // userDTO 模拟 api 层入参对象；userVO 模拟 service 层接收的 VO。
@@ -78,19 +82,27 @@ func TestWrapCaseInsensitive(t *testing.T) {
 
 func TestRequire(t *testing.T) {
 	t.Run("非空返回去空白值", func(t *testing.T) {
-		v, err := request.Require("username", "  zhangsan  ")
+		v, err := request.Require(context.Background(), "username", "  zhangsan  ")
 		require.NoError(t, err)
 		assert.Equal(t, "zhangsan", v)
 	})
 
-	t.Run("空串与纯空白报 VALIDATION", func(t *testing.T) {
+	t.Run("空串与纯空白报公共错误 ParameterRequired（默认英文）", func(t *testing.T) {
 		for _, v := range []string{"", "   "} {
-			_, err := request.Require("username", v)
+			_, err := request.Require(context.Background(), "username", v)
 			require.Error(t, err, "输入 %q 应报错", v)
 			e, ok := bizerror.From(err)
 			require.True(t, ok)
-			assert.Equal(t, bizerror.CodeValidation, e.Code)
-			assert.Contains(t, e.Message, "username", "errMsg 携带参数名")
+			assert.Equal(t, commonerrors.CodeParameterRequired, e.Code)
+			assert.Equal(t, "parameter username is required", e.Message)
 		}
+	})
+
+	t.Run("请求语言为中文时 errMsg 为中文", func(t *testing.T) {
+		ctx := rctx.SetRuntimeContext(context.Background(), rctx.RuntimeContext{}.WithLang("zh"))
+		_, err := request.Require(ctx, "username", "")
+		e, ok := bizerror.From(err)
+		require.True(t, ok)
+		assert.Equal(t, "参数 username 必填", e.Message)
 	})
 }

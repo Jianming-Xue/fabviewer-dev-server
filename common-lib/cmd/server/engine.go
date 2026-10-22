@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/fab-viewer/common-lib/api/handlers"
 	"github.com/fab-viewer/common-lib/api/middleware/enrich"
 	"github.com/fab-viewer/common-lib/api/middleware/fault"
 	"github.com/fab-viewer/common-lib/api/middleware/guard"
@@ -27,7 +28,7 @@ func WithSkipPaths(paths ...string) EngineOption {
 
 // NewEngine 组装引擎：按固定顺序挂四中间件（observer → fault →
 // guard → enrich，顺序契约见 api/middleware 包文档）并内置
-// /healthz 探活（访问日志默认跳过）。业务差异经 opts 传入。
+// /healthz 与 /api/readyz 探活（访问日志默认跳过）。业务差异经 opts 传入。
 func NewEngine(opts ...EngineOption) *gin.Engine {
 	cfg := engineConfig{}
 	for _, opt := range opts {
@@ -42,5 +43,6 @@ func NewEngine(opts ...EngineOption) *gin.Engine {
 		enrich.Enrich(),
 	)
 	r.GET("/healthz", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
+	r.GET("/api/readyz", handlers.Readyz)
 	return r
 }
